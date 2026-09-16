@@ -1,0 +1,22 @@
+{
+  "short_name": "4toA",
+  "name": "Los Proverbios 4toA",
+  "description": "Portal Académico y Almacén de Clases de 4toA",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "./index.html",
+  "background_color": "#05070a",
+  "theme_color": "#05070a",
+  "display": "standalone",
+  "orientation": "portrait"
+}

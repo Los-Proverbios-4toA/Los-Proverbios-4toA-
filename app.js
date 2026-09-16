@@ -358,13 +358,12 @@ function rs() {
 addEventListener('resize', rs);
 rs();
 
-// 45 gotas ligeras, movimiento fluido y lento
 for (let i = 0; i < 45; i++) {
   D.push({
     x: Math.random() * W,
     y: Math.random() * H,
     len: 18 + Math.random() * 25,
-    sp: 3.5 + Math.random() * 4.5, // Caída suave y lenta
+    sp: 3.5 + Math.random() * 4.5,
     w: 1 + Math.random() * 1.2,
     o: 0.2 + Math.random() * 0.4
   });
@@ -389,9 +388,18 @@ function loopRain() {
   requestAnimationFrame(loopRain);
 }
 
-// Inicialización
+// Inicialización de la App
 cargar().then(() => {
   if (window.lucide) lucide.createIcons();
 });
 loopRain();
+
+// Registrar Service Worker para PWA / Caché Offline
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('Service Worker listo'))
+      .catch(err => console.error('Error en Service Worker', err));
+  });
+}
 
