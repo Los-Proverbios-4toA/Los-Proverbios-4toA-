@@ -1,0 +1,39 @@
+# 📚 Los Proverbios 4toA — Apoyo estudiantil
+
+Portal web y Aplicación Web Progresiva (PWA) creada como almacén dinámico de clases y punto de apoyo académico para los estudiantes de **4toA**.
+
+---
+
+## 🎯 Objetivo
+Centralizar y organizar las guías de estudio, apuntes y clases de todas las asignaturas del curso en un solo lugar de fácil acceso, garantizando que todos los compañeros puedan consultar, visualizar y descargar el material desde cualquier dispositivo móvil o computadora.
+
+---
+
+## ✨ Características Principales
+
+* 📂 **Organización por Materias:** Módulos dedicados para cada asignatura (Matemáticas, Lengua Española, Ciencias Naturales, Ciencias Sociales, Inglés, Francés, Educación Física, Formación Humana, etc.).
+* 📄 **Visor PDF Integrado:** Visualización directa de documentos dentro de la aplicación mediante renderizado en canvas y opción de descarga directa.
+* 🔍 **Buscador Inteligente:** Filtro en tiempo real para localizar clases por temas, títulos o asignaturas de forma instantánea.
+* 📱 **Instalable como App (PWA):** Compatible con instalación en la pantalla de inicio en Android e iOS mediante Web App Manifest.
+* ⚡ **Soporte Offline Completo:** Integración de Service Worker e IndexedDB para permitir la lectura de material previamente cargado sin necesidad de datos móviles o Wi-Fi.
+* 🛡️ **Panel de Administración Privado:** Menú oculto protegido por contraseña para subir nuevas clases en PDF o eliminar contenido desactualizado.
+* 💬 **Conexión Grupal:** Acceso directo al grupo de WhatsApp del curso para soporte y avisos entre compañeros.
+
+---
+
+## 🛠️ Tecnologías Utilizadas
+
+* **Frontend:** HTML5, CSS3 (Variables, Flexbox, Grid), JavaScript (ES6+ Module)
+* **Base de Datos & Backend:** Firebase Firestore (sincronización en tiempo real y persistencia offline)
+* **Librerías Visuales & PDF:** PDF.js (Mozilla) para renderizado de documentos y Lucide Icons
+* **PWA & Offline:** Service Worker (`sw.js`) y `manifest.json`
+* **Hosting:** GitHub Pages
+
+---
+
+## 🔒 Gestión de Contenido
+El panel de administración permite subir archivos PDF comprimidos (límite de 900 KB) directamente a la nube de Firebase. El acceso se realiza tocando 5 veces el pie de página e ingresando la clave de seguridad establecida.
+
+---
+
+> *Desarrollado por **Juan** • "La constancia es la clave.."*
