@@ -1,10 +1,10 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // Configuración de PDF.js para renderizado móvil
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-// Configuración original de Firebase
+// Configuración de Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyDNOup0pRqx8ZKTcVrpYvCc8JUB967eLYw",
   authDomain: "los-proverbios-4toa.firebaseapp.com",
@@ -16,7 +16,11 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+
+// Inicializar Firestore con Caché Offline Persistente en memoria del teléfono
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
 
 const M = [
   { n: 'Matemáticas', c: '#f4b400' },
@@ -61,7 +65,7 @@ function getUint8ArrayFromBase64(base64) {
   return bytes;
 }
 
-// Visualizador universal de PDF usando Canvas (compatible con teléfonos Android / Chrome)
+// Visualizador universal de PDF usando Canvas
 window.verPDF = async function(index) {
   const d = DOCS[index];
   if (!d) return;
@@ -120,14 +124,28 @@ window.descargarPDF = function(index) {
   }
 };
 
-// Cargar Clases desde Firestore
+// Cargar Clases con Respaldo Offline
 async function cargar() {
   try {
     const s = await getDocs(collection(db, 'clases'));
     DOCS = s.docs.map(x => ({ id: x.id, ...x.data() }));
     DOCS.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+    // Guardar respaldo local directo
+    try {
+      localStorage.setItem('4toa_docs_backup', JSON.stringify(DOCS));
+    } catch(err) {
+      console.log('Exceso de almacenamiento local', err);
+    }
   } catch (e) {
-    toast('⚠️ Error al conectar con la nube');
+    // Si falla la conexión con la red, intentar usar el respaldo guardado
+    const backup = localStorage.getItem('4toa_docs_backup');
+    if (backup) {
+      DOCS = JSON.parse(backup);
+      toast('⚡ Modo Offline: Mostrando clases guardadas');
+    } else {
+      toast('⚠️ Modo Offline: Conéctate una vez para sincronizar');
+    }
   }
   loaded = true;
   renderGrid();
@@ -168,7 +186,7 @@ function openSub(i) {
   renderListaDocumentos(list, 'docs', `Aún no hay clases de ${m.n}.`);
 }
 
-// Renderizar lista con títulos recortados correctamente
+// Renderizar lista
 function renderListaDocumentos(items, containerId, mensajeVacio) {
   const container = $(containerId);
   if (!items.length) {
@@ -241,7 +259,7 @@ $('cerrar-modal').onclick = () => {
   }
 };
 
-// Panel de Administración (5 clics en footer)
+// Panel de Administración
 $('aMat').innerHTML = M.map((m, i) => `<option value="${i}">${m.n}</option>`).join('');
 let taps = 0;
 $('foot').onclick = () => {
@@ -347,7 +365,7 @@ window.eliminarClase = async function(id) {
   }
 };
 
-// EFECTO DE LLUVIA ULTRA LIGERA Y LENTA (SIN LAG EN MÓVILES)
+// EFECTO DE LLUVIA
 const cv = $('fx'), cx = cv.getContext('2d');
 let W, H, D = [];
 
