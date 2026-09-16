@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Los Proverbios 4toA — Portal Académico</title>
+
+  <!-- Fuente Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Iconos Lucide -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- PDF.js para renderizar PDF en móviles -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Canvas de Lluvia Cristalina -->
+  <canvas id="fx"></canvas>
+  <div class="bg-glow"></div>
+
+  <div class="wrap">
+    <header class="app-header">
+      <div class="top-bar">
+        <div class="status-badge">
+          <span class="pulse-dot"></span>
+          <span>APOYO GRUPAL</span>
+        </div>
+        <a href="https://chat.whatsapp.com/H0XtL3utmXS45aokIqlvV9?s=cl&p=a&mlu=4&ilr=4" target="_blank" rel="noopener noreferrer" class="btn-whatsapp">
+          <i data-lucide="message-circle"></i>
+          <span>Grupo de WhatsApp</span>
+        </a>
+      </div>
+      <h1>Los Proverbios <span class="grade-gradient">4toA</span></h1>
+      <p class="subtitle">by Juan • la constancia es la clave..</p>
+    </header>
+
+    <!-- Buscador -->
+    <div class="search-wrapper">
+      <i data-lucide="search" class="search-icon"></i>
+      <input type="text" id="q" placeholder="Buscar clases, temas o materias..." autocomplete="off">
+    </div>
+
+    <!-- Vista Principal: Materias -->
+    <main id="home">
+      <div id="grid" class="grid-materias"></div>
+    </main>
+
+    <!-- Vista de Materia Específica -->
+    <main id="subj" class="hidden animate-fade">
+      <button id="back" class="btn-back">
+        <i data-lucide="arrow-left"></i> Volver a materias
+      </button>
+      <div class="materia-header">
+        <div class="header-icon-box"><i data-lucide="book-open"></i></div>
+        <h2 id="sname"></h2>
+      </div>
+      <div id="docs" class="docs-stack"></div>
+    </main>
+
+    <!-- Vista de Resultados de Búsqueda -->
+    <main id="res" class="hidden animate-fade">
+      <button id="back2" class="btn-back">
+        <i data-lucide="arrow-left"></i> Volver a materias
+      </button>
+      <h2 id="rtitle" class="search-title"></h2>
+      <div id="rlist" class="docs-stack"></div>
+    </main>
+
+    <!-- Panel de Administración -->
+    <main id="admin" class="hidden animate-fade">
+      <button id="cerrarAdmin" class="btn-back">
+        <i data-lucide="arrow-left"></i> Cerrar panel
+      </button>
+      <div class="acard">
+        <div class="ahead">
+          <div class="aicon"><i data-lucide="upload-cloud"></i></div>
+          <div>
+            <div class="at">Sube tus archivos</div>
+            <div class="as">Publica clases para todo el salón</div>
+          </div>
+        </div>
+
+        <label class="drop" id="drop">
+          <input type="file" id="aFile" accept="application/pdf" hidden>
+          <i data-lucide="file-up" style="width:38px; height:38px; color:#4da3ff;"></i>
+          <div class="dt">Arrastra y suelta tu archivo PDF</div>
+          <div class="ds">o haz clic para seleccionar</div>
+          <div class="df">📄 Formato permitido: PDF</div>
+        </label>
+
+        <div class="fname hidden" id="fname"></div>
+
+        <div class="form-group">
+          <select id="aMat"></select>
+        </div>
+
+        <div class="form-group">
+          <input type="text" id="aTit" placeholder="Título de la clase">
+        </div>
+
+        <button class="pub" id="pubBtn">
+          <span>☁️ Publicar clase</span>
+        </button>
+
+        <div class="asec">📚 Clases publicadas</div>
+        <div class="docs-stack" id="aList"></div>
+      </div>
+    </main>
+
+    <footer id="foot">
+      <span>todas las clases de 4toA (solo integrantes de 4toA)</span>
+    </footer>
+  </div>
+
+  <!-- Modal Visor PDF con Canvas -->
+  <div id="modal-pdf" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-box pdf-modal-box">
+      <div class="modal-header">
+        <span id="pdf-modal-title">Vista previa del documento</span>
+        <div class="modal-header-actions">
+          <a id="pdf-open-ext" href="#" target="_blank" class="btn-open-external" title="Abrir en pestaña nueva">
+            <i data-lucide="external-link" style="width:14px; height:14px;"></i>
+            <span>Pantalla completa</span>
+          </a>
+          <button id="cerrar-modal" class="btn-close"><i data-lucide="x"></i></button>
+        </div>
+      </div>
+      <div id="pdf-viewer-container"></div>
+    </div>
+  </div>
+
+  <!-- Modal Bloqueo Admin -->
+  <div class="ov" id="lock">
+    <div class="lockbox">
+      <div class="lshield"><i data-lucide="shield-check" style="width:32px; height:32px; color:#8b5cf6;"></i></div>
+      <div class="lt">Acceso de Administrador</div>
+      <div class="ls">Ingresa la contraseña para entrar al menú</div>
+      <div class="pwrap2">
+        <input type="password" id="pass" placeholder="Escribe tu contraseña">
+        <button class="ey" id="eye"><i data-lucide="eye"></i></button>
+      </div>
+      <button class="pub" id="unlock">Entrar</button>
+      <button class="demo" id="cancelLock">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- Toast Notificaciones -->
+  <div id="toast"></div>
+
+  <!-- Firebase Scripts (v10 Modular) -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>
+
