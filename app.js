@@ -1,8 +1,35 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, getDocs, addDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, getDocs, getDoc, addDoc, setDoc, updateDoc, deleteDoc, deleteField, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Configuración de PDF.js para renderizado móvil
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+// Carga diferida de librerías pesadas: solo se descargan cuando realmente se usan,
+// para que la primera visita a la página sea liviana y rápida.
+function cargarScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('No se pudo cargar ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+let _pdfjsListo = null;
+function asegurarPdfJs() {
+  if (!_pdfjsListo) {
+    _pdfjsListo = cargarScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js')
+      .then(() => { pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; });
+  }
+  return _pdfjsListo;
+}
+
+let _pdfLibListo = null;
+function asegurarPdfLib() {
+  if (!_pdfLibListo) {
+    _pdfLibListo = cargarScript('https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js');
+  }
+  return _pdfLibListo;
+}
 
 // Configuración de Firebase
 const firebaseConfig = {
@@ -16,6 +43,10 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
+// Configuración de Supabase (solo se usa como puente seguro hacia la IA de Gemini)
+const SUPA_URL = "https://ctyruduakrjtuxwuaqna.supabase.co";
+const SUPA_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN0eXJ1ZHVha3JqdHV4d3VhcW5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5MTExNzcsImV4cCI6MjEwNTQ4NzE3N30.BXM5IOKmAeMNmo5XoMBzoBoR28Bh3499-VRVumS9A1M";
 
 // Inicializar Firestore con Caché Offline Persistente en memoria del teléfono
 const db = initializeFirestore(app, {
@@ -44,6 +75,11 @@ let DOCS = [], loaded = false, tt, dropFile = null, currentBlobUrl = null;
 const $ = id => document.getElementById(id);
 const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const fdate = ts => new Date(ts).toLocaleDateString('es-DO', { day: 'numeric', month: 'short' });
+function fechaHoyDDMMYYYY() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
 
 function toast(m) {
   const t = $('toast');
@@ -65,24 +101,37 @@ function getUint8ArrayFromBase64(base64) {
   return bytes;
 }
 
+// Obtiene (y cachea en memoria) el PDF real de una clase, solo cuando hace falta
+async function obtenerDataDeClase(index) {
+  const d = DOCS[index];
+  if (!d) return null;
+  if (d.data) return d.data; // ya la tenemos en memoria (o venía embebida, clases sin migrar)
+  const snap = await getDoc(doc(db, 'clases_data', d.id));
+  if (!snap.exists()) throw new Error('No se encontró el archivo de esta clase');
+  d.data = snap.data().data;
+  return d.data;
+}
+
 // Visualizador universal de PDF usando Canvas
 window.verPDF = async function(index) {
   const d = DOCS[index];
   if (!d) return;
 
   const container = $('pdf-viewer-container');
-  container.innerHTML = '<div class="pdf-loading"><span>⏳ Cargando documento...</span></div>';
+  container.innerHTML = '<div class="pdf-loading"><span>⏳ Descargando esta clase...</span></div>';
   $('pdf-modal-title').textContent = d.name;
-
-  if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-  const blob = new Blob([getUint8ArrayFromBase64(d.data)], { type: 'application/pdf' });
-  currentBlobUrl = URL.createObjectURL(blob);
-  $('pdf-open-ext').href = currentBlobUrl;
-
   $('modal-pdf').classList.remove('hidden');
 
   try {
-    const byteArray = getUint8ArrayFromBase64(d.data);
+    const [_, base64] = await Promise.all([asegurarPdfJs(), obtenerDataDeClase(index)]);
+    container.innerHTML = '<div class="pdf-loading"><span>⏳ Cargando documento...</span></div>';
+
+    if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+    const byteArray = getUint8ArrayFromBase64(base64);
+    const blob = new Blob([byteArray], { type: 'application/pdf' });
+    currentBlobUrl = URL.createObjectURL(blob);
+    $('pdf-open-ext').href = currentBlobUrl;
+
     const pdfDoc = await pdfjsLib.getDocument({ data: byteArray }).promise;
     container.innerHTML = '';
 
@@ -100,16 +149,18 @@ window.verPDF = async function(index) {
       container.appendChild(canvas);
     }
   } catch (e) {
-    container.innerHTML = '<div class="pdf-loading" style="color:#ff6b6b;">Error al renderizar el PDF. Prueba descargándolo.</div>';
+    container.innerHTML = '<div class="pdf-loading" style="color:#ff6b6b;">Error al cargar el PDF. Prueba descargándolo.</div>';
   }
 };
 
 // Descargar PDF
-window.descargarPDF = function(index) {
+window.descargarPDF = async function(index) {
   const d = DOCS[index];
   if (!d) return;
   try {
-    const blob = new Blob([getUint8ArrayFromBase64(d.data)], { type: 'application/pdf' });
+    toast('⏳ Descargando...');
+    const base64 = await obtenerDataDeClase(index);
+    const blob = new Blob([getUint8ArrayFromBase64(base64)], { type: 'application/pdf' });
     const u = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = u;
@@ -124,16 +175,16 @@ window.descargarPDF = function(index) {
   }
 };
 
-// Cargar Clases con Respaldo Offline
+// Cargar Clases con Respaldo Offline (solo metadatos: rápido sin importar cuántas clases haya)
 async function cargar() {
   try {
     const s = await getDocs(collection(db, 'clases'));
     DOCS = s.docs.map(x => ({ id: x.id, ...x.data() }));
     DOCS.sort((a, b) => (b.ts || 0) - (a.ts || 0));
 
-    // Guardar respaldo local directo
+    // Guardar respaldo local directo (ahora liviano: sin el contenido del PDF)
     try {
-      localStorage.setItem('4toa_docs_backup', JSON.stringify(DOCS));
+      localStorage.setItem('4toa_docs_backup', JSON.stringify(DOCS.map(({ data, ...rest }) => rest)));
     } catch(err) {
       console.log('Exceso de almacenamiento local', err);
     }
@@ -142,7 +193,7 @@ async function cargar() {
     const backup = localStorage.getItem('4toa_docs_backup');
     if (backup) {
       DOCS = JSON.parse(backup);
-      toast('⚡ Modo Offline: Mostrando clases guardadas');
+      toast('⚡ Modo Offline: Mostrando clases guardadas (ábrelas con internet)');
     } else {
       toast('⚠️ Modo Offline: Conéctate una vez para sincronizar');
     }
@@ -305,38 +356,269 @@ function setFile(f) {
   $('fname').innerHTML = `<span>PDF</span> ${f.name} <span style="color:var(--text-muted); margin-left:auto">${(f.size/1024).toFixed(0)} KB</span>`;
 }
 
-// Publicar clase
-$('pubBtn').onclick = async () => {
-  const mi = +$('aMat').value, t = $('aTit').value.trim(), f = dropFile || $('aFile').files[0], b = $('pubBtn');
-  if (!t) { toast('Escribe un título'); return; }
-  if (!f) { toast('Selecciona un PDF'); return; }
-  if (f.type !== 'application/pdf') { toast('El archivo debe ser un PDF'); return; }
-  if (f.size > 900 * 1024) { toast('⚠️ Máx 900 KB. Comprime en ilovepdf.com'); return; }
-
-  b.disabled = true;
-  b.textContent = '⏳ Subiendo a la nube...';
+// Función compartida: sube cualquier PDF (blob) como clase publicada.
+// Guarda los metadatos (livianos) en 'clases' y el PDF pesado aparte en 'clases_data',
+// así la lista siempre carga rápido sin importar cuántas clases haya.
+async function publicarBlobComoClase(mi, nombre, blob, botonEl, textoOriginalBtn) {
+  if (blob.size > 900 * 1024) {
+    toast('⚠️ Máx 900 KB. El PDF generado quedó muy pesado.');
+    return false;
+  }
+  botonEl.disabled = true;
+  botonEl.querySelector('span').textContent = '⏳ Subiendo a la nube...';
   try {
     const data = await new Promise((ok, no) => {
       const r = new FileReader();
       r.onload = () => ok(r.result);
       r.onerror = no;
-      r.readAsDataURL(f);
+      r.readAsDataURL(blob);
     });
-
-    await addDoc(collection(db, 'clases'), { mi, name: t, ts: Date.now(), data });
+    const ref = await addDoc(collection(db, 'clases'), { mi, name: nombre, ts: Date.now() });
+    await setDoc(doc(db, 'clases_data', ref.id), { data });
     await cargar();
     renderAdmin();
+    toast('✅ Clase publicada para todo el salón');
+    return true;
+  } catch (e) {
+    toast('⚠️ Error al subir');
+    return false;
+  } finally {
+    botonEl.disabled = false;
+    botonEl.querySelector('span').textContent = textoOriginalBtn;
+  }
+}
+
+// Publicar clase (modo: subir PDF manual)
+$('pubBtn').onclick = async () => {
+  const mi = +$('aMat').value, t = $('aTit').value.trim(), f = dropFile || $('aFile').files[0];
+  if (!t) { toast('Escribe un título'); return; }
+  if (!f) { toast('Selecciona un PDF'); return; }
+  if (f.type !== 'application/pdf') { toast('El archivo debe ser un PDF'); return; }
+
+  const ok = await publicarBlobComoClase(mi, t, f, $('pubBtn'), '☁️ Publicar clase');
+  if (ok) {
     $('aTit').value = '';
     $('aFile').value = '';
     dropFile = null;
     $('fname').classList.add('hidden');
-    toast('✅ Clase publicada para todo el salón');
-  } catch (e) {
-    toast('⚠️ Error al subir');
   }
-  b.disabled = false;
-  b.textContent = '☁️ Publicar clase';
 };
+
+/* ============================================================
+   MODO "CREAR CON IA"
+   ============================================================ */
+
+// Cambiar entre "Subir PDF" y "Crear con IA"
+$('tabUpload').onclick = () => setModoAdmin('upload');
+$('tabAI').onclick = () => setModoAdmin('ai');
+function setModoAdmin(modo) {
+  $('tabUpload').classList.toggle('on', modo === 'upload');
+  $('tabAI').classList.toggle('on', modo === 'ai');
+  $('modeUpload').classList.toggle('hidden', modo !== 'upload');
+  $('modeAI').classList.toggle('hidden', modo !== 'ai');
+}
+
+// Cambiar entre "Pegar texto" y "Foto de apunte"
+let fuenteIA = 'text', imgFile = null;
+$('srcText').onclick = () => setFuenteIA('text');
+$('srcImg').onclick = () => setFuenteIA('image');
+function setFuenteIA(src) {
+  fuenteIA = src;
+  $('srcText').classList.toggle('on', src === 'text');
+  $('srcImg').classList.toggle('on', src === 'image');
+  $('aiInputText').classList.toggle('hidden', src !== 'text');
+  $('aiInputImg').classList.toggle('hidden', src !== 'image');
+}
+
+// Selección de imagen
+const dzImg = $('dropImg');
+dzImg.addEventListener('dragover', e => { e.preventDefault(); dzImg.classList.add('on'); });
+dzImg.addEventListener('dragleave', () => dzImg.classList.remove('on'));
+dzImg.addEventListener('drop', e => { e.preventDefault(); dzImg.classList.remove('on'); setImgFile(e.dataTransfer.files[0]); });
+$('aImg').onchange = e => setImgFile(e.target.files[0]);
+
+function setImgFile(f) {
+  if (!f) return;
+  if (!f.type.startsWith('image/')) { toast('Selecciona una imagen'); return; }
+  imgFile = f;
+  $('fnameImg').classList.remove('hidden');
+  $('fnameImg').innerHTML = `<span>IMG</span> ${f.name} <span style="color:var(--text-muted); margin-left:auto">${(f.size/1024).toFixed(0)} KB</span>`;
+}
+
+function archivoABase64Puro(file) {
+  return new Promise((ok, no) => {
+    const r = new FileReader();
+    r.onload = () => ok(r.result.split(',')[1]);
+    r.onerror = no;
+    r.readAsDataURL(file);
+  });
+}
+
+// Llama a la Edge Function de Supabase, que a su vez llama a Gemini
+async function llamarIA(payload) {
+  const res = await fetch(`${SUPA_URL}/functions/v1/ai-format`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SUPA_ANON_KEY}`,
+      'apikey': SUPA_ANON_KEY
+    },
+    body: JSON.stringify(payload)
+  });
+  const json = await res.json();
+  if (!res.ok || !json.ok) throw new Error(json.error || 'Error al contactar la IA');
+  return json; // { title, materia, body }
+}
+
+$('aiRunBtn').onclick = async () => {
+  const btn = $('aiRunBtn');
+  let payload;
+
+  if (fuenteIA === 'text') {
+    const texto = $('aiText').value.trim();
+    if (!texto) { toast('Pega el texto de la clase primero'); return; }
+    payload = { mode: 'text', text: texto };
+  } else {
+    if (!imgFile) { toast('Selecciona una foto primero'); return; }
+    const base64 = await archivoABase64Puro(imgFile);
+    payload = { mode: 'image', imageBase64: base64, mimeType: imgFile.type };
+  }
+
+  btn.disabled = true;
+  btn.querySelector('span').textContent = '🧠 Pensando...';
+  try {
+    const r = await llamarIA(payload);
+    $('aiTit').value = r.title;
+    $('aiMat').value = String(M.findIndex(m => m.n === r.materia));
+    $('aiClase').value = $('aiClase').value || '4to A';
+    $('aiFecha').value = $('aiFecha').value || fechaHoyDDMMYYYY();
+    $('aiBody').value = r.body;
+    $('aiPreview').classList.remove('hidden');
+    $('aiPreview').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toast('✅ Contenido organizado, revísalo antes de publicar');
+  } catch (e) {
+    toast('⚠️ ' + (e.message || 'Error con la IA'));
+  }
+  btn.disabled = false;
+  btn.querySelector('span').textContent = '✨ Organizar con IA';
+};
+
+$('aiMat').innerHTML = M.map((m, i) => `<option value="${i}">${m.n}</option>`).join('');
+
+$('aiPublishBtn').onclick = async () => {
+  const mi = +$('aiMat').value;
+  const titulo = $('aiTit').value.trim();
+  const clase = $('aiClase').value.trim() || '4to A';
+  const fecha = $('aiFecha').value.trim();
+  const cuerpo = $('aiBody').value;
+  if (!titulo) { toast('Escribe un título'); return; }
+  if (!cuerpo.trim()) { toast('El contenido está vacío'); return; }
+
+  const btn = $('aiPublishBtn');
+  btn.disabled = true;
+  btn.querySelector('span').textContent = '📄 Generando PDF...';
+  try {
+    const pdfBytes = await generarPdfConPlantillas({ clase, materia: M[mi].n, fecha, titulo, cuerpo });
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const ok = await publicarBlobComoClase(mi, titulo, blob, btn, '📄 Generar PDF y Publicar');
+    if (ok) {
+      $('aiText').value = '';
+      $('aImg').value = '';
+      imgFile = null;
+      $('fnameImg').classList.add('hidden');
+      $('aiPreview').classList.add('hidden');
+    }
+  } catch (e) {
+    toast('⚠️ Error al generar el PDF: ' + e.message);
+    btn.disabled = false;
+    btn.querySelector('span').textContent = '📄 Generar PDF y Publicar';
+  }
+};
+
+// Genera el PDF final usando las 2 plantillas reales (portada + continuación)
+let plantilla1Bytes = null, plantilla2Bytes = null;
+async function cargarPlantillas() {
+  if (!plantilla1Bytes) plantilla1Bytes = await fetch('./plantilla1.pdf').then(r => r.arrayBuffer());
+  if (!plantilla2Bytes) plantilla2Bytes = await fetch('./plantilla2.pdf').then(r => r.arrayBuffer());
+}
+
+async function generarPdfConPlantillas({ clase, materia, fecha, titulo, cuerpo }) {
+  await asegurarPdfLib();
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  await cargarPlantillas();
+
+  const out = await PDFDocument.create();
+  const font = await out.embedFont(StandardFonts.Helvetica);
+  const fontBold = await out.embedFont(StandardFonts.HelveticaBold);
+
+  const SIZE = 11;
+  const LINE_H = 15.5;
+  const MARGIN_X = 70.87;
+  const PAGE_W = 595.276, PAGE_H = 841.89;
+  const MAX_WIDTH = PAGE_W - MARGIN_X * 2;
+
+  // Parte el texto en líneas que caben dentro del ancho disponible
+  function envolverTexto(texto) {
+    const lineasFinales = [];
+    const parrafos = texto.split('\n');
+    for (const parrafo of parrafos) {
+      if (!parrafo.trim()) { lineasFinales.push(''); continue; }
+      const palabras = parrafo.split(' ');
+      let actual = '';
+      for (const palabra of palabras) {
+        const prueba = actual ? actual + ' ' + palabra : palabra;
+        if (font.widthOfTextAtSize(prueba, SIZE) > MAX_WIDTH && actual) {
+          lineasFinales.push(actual);
+          actual = palabra;
+        } else {
+          actual = prueba;
+        }
+      }
+      if (actual) lineasFinales.push(actual);
+    }
+    return lineasFinales;
+  }
+
+  const lineas = envolverTexto(cuerpo);
+
+  // --- Página 1: copia de la Plantilla 1 (portada) ---
+  const src1 = await PDFDocument.load(plantilla1Bytes);
+  const [p1] = await out.copyPages(src1, [0]);
+  out.addPage(p1);
+
+  p1.drawText(clase, { x: 111.97, y: 770.42, size: SIZE, font, color: rgb(0, 0, 0) });
+  p1.drawText(materia, { x: 119.06, y: 751.99, size: SIZE, font, color: rgb(0, 0, 0) });
+  p1.drawText(fecha, { x: 111.97, y: 733.57, size: SIZE, font, color: rgb(0, 0, 0) });
+
+  const tituloW = fontBold.widthOfTextAtSize(titulo, 13);
+  p1.drawText(titulo, { x: 297.64 - tituloW / 2, y: 701.5, size: 13, font: fontBold, color: rgb(0, 0, 0) });
+
+  // Cuerpo en la página 1, debajo del título
+  let y = 673, li = 0;
+  const bottomLimit1 = 55;
+  while (li < lineas.length && y > bottomLimit1) {
+    p1.drawText(lineas[li], { x: MARGIN_X, y, size: SIZE, font, color: rgb(0.1, 0.1, 0.1) });
+    y -= LINE_H;
+    li++;
+  }
+
+  // --- Páginas siguientes: copias de la Plantilla 2, hasta terminar el texto ---
+  // topStart queda por debajo de la línea "creado por Juan" para que nunca se encimen
+  const topStart = 745, bottomLimit = 60;
+  while (li < lineas.length) {
+    const src2 = await PDFDocument.load(plantilla2Bytes);
+    const [p2] = await out.copyPages(src2, [0]);
+    out.addPage(p2);
+    let yy = topStart;
+    while (li < lineas.length && yy > bottomLimit) {
+      p2.drawText(lineas[li], { x: MARGIN_X, y: yy, size: SIZE, font, color: rgb(0.1, 0.1, 0.1) });
+      yy -= LINE_H;
+      li++;
+    }
+  }
+
+  return out.save();
+}
 
 function renderAdmin() {
   $('aList').innerHTML = DOCS.length ? DOCS.map((d, i) => `
@@ -357,6 +639,7 @@ function renderAdmin() {
 window.eliminarClase = async function(id) {
   try {
     await deleteDoc(doc(db, 'clases', id));
+    await deleteDoc(doc(db, 'clases_data', id)).catch(() => {}); // por si no existía (clase vieja sin migrar)
     await cargar();
     renderAdmin();
     toast('Clase eliminada');
@@ -364,6 +647,43 @@ window.eliminarClase = async function(id) {
     toast('Error al eliminar');
   }
 };
+
+/* ============================================================
+   MIGRACIÓN ÚNICA: separa el PDF pesado de las clases viejas
+   que todavía lo tienen embebido, para que la app cargue rápido.
+   Es seguro ejecutarla varias veces: solo toca lo que falte migrar.
+   ============================================================ */
+const btnMigrar = $('btnMigrar');
+if (btnMigrar) {
+  btnMigrar.onclick = async () => {
+    btnMigrar.disabled = true;
+    btnMigrar.querySelector('span').textContent = '⏳ Optimizando...';
+    try {
+      const snap = await getDocs(collection(db, 'clases'));
+      let migradas = 0, total = snap.docs.length;
+      for (const docSnap of snap.docs) {
+        const data = docSnap.data();
+        if (data.data) {
+          await setDoc(doc(db, 'clases_data', docSnap.id), { data: data.data });
+          await updateDoc(doc(db, 'clases', docSnap.id), { data: deleteField() });
+          migradas++;
+        }
+      }
+      await cargar();
+      renderAdmin();
+      if (migradas > 0) {
+        toast(`✅ ${migradas} de ${total} clases optimizadas`);
+      } else {
+        toast('✅ Ya estaba todo optimizado');
+        btnMigrar.closest('.form-group')?.classList.add('hidden');
+      }
+    } catch (e) {
+      toast('⚠️ Error optimizando: ' + e.message);
+    }
+    btnMigrar.disabled = false;
+    btnMigrar.querySelector('span').textContent = '🔧 Optimizar clases antiguas';
+  };
+}
 
 // EFECTO DE LLUVIA
 const cv = $('fx'), cx = cv.getContext('2d');

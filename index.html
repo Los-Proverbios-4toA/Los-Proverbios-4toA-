@@ -19,10 +19,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   
   <!-- Iconos Lucide -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-  
-  <!-- PDF.js para renderizar PDF en móviles -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script defer src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- pdf.js y pdf-lib se cargan bajo demanda desde app.js, no aquí,
+       para que la primera visita a la página sea rápida. -->
 
   <link rel="stylesheet" href="style.css">
 </head>
@@ -94,27 +94,116 @@
           </div>
         </div>
 
-        <label class="drop" id="drop">
-          <input type="file" id="aFile" accept="application/pdf" hidden>
-          <i data-lucide="file-up" style="width:38px; height:38px; color:#4da3ff;"></i>
-          <div class="dt">Arrastra y suelta tu archivo PDF</div>
-          <div class="ds">o haz clic para seleccionar</div>
-          <div class="df">📄 Formato permitido: PDF</div>
-        </label>
-
-        <div class="fname hidden" id="fname"></div>
-
-        <div class="form-group">
-          <select id="aMat"></select>
+        <div class="form-group" style="margin-top:-4px">
+          <button class="demo" id="btnMigrar" style="font-size:0.78rem">
+            <span>🔧 Optimizar clases antiguas</span>
+          </button>
         </div>
 
-        <div class="form-group">
-          <input type="text" id="aTit" placeholder="Título de la clase">
+        <!-- Selector de modo -->
+        <div class="mode-tabs">
+          <button class="mode-tab on" id="tabUpload" data-mode="upload">
+            <i data-lucide="file-up" style="width:15px; height:15px;"></i> Subir PDF
+          </button>
+          <button class="mode-tab" id="tabAI" data-mode="ai">
+            <i data-lucide="sparkles" style="width:15px; height:15px;"></i> Crear con IA
+          </button>
         </div>
 
-        <button class="pub" id="pubBtn">
-          <span>☁️ Publicar clase</span>
-        </button>
+        <!-- ===== MODO 1: Subir PDF manual ===== -->
+        <div id="modeUpload">
+          <label class="drop" id="drop">
+            <input type="file" id="aFile" accept="application/pdf" hidden>
+            <i data-lucide="file-up" style="width:38px; height:38px; color:#4da3ff;"></i>
+            <div class="dt">Arrastra y suelta tu archivo PDF</div>
+            <div class="ds">o haz clic para seleccionar</div>
+            <div class="df">📄 Formato permitido: PDF</div>
+          </label>
+
+          <div class="fname hidden" id="fname"></div>
+
+          <div class="form-group">
+            <select id="aMat"></select>
+          </div>
+
+          <div class="form-group">
+            <input type="text" id="aTit" placeholder="Título de la clase">
+          </div>
+
+          <button class="pub" id="pubBtn">
+            <span>☁️ Publicar clase</span>
+          </button>
+        </div>
+
+        <!-- ===== MODO 2: Crear con IA ===== -->
+        <div id="modeAI" class="hidden">
+
+          <div class="mode-tabs sub">
+            <button class="mode-tab on" id="srcText" data-src="text">
+              <i data-lucide="type" style="width:14px; height:14px;"></i> Pegar texto
+            </button>
+            <button class="mode-tab" id="srcImg" data-src="image">
+              <i data-lucide="camera" style="width:14px; height:14px;"></i> Foto de apunte
+            </button>
+          </div>
+
+          <!-- Entrada de texto -->
+          <div id="aiInputText">
+            <div class="form-group">
+              <textarea id="aiText" rows="7" placeholder="Pega aquí el texto completo de la clase tal cual te lo dieron..."></textarea>
+            </div>
+          </div>
+
+          <!-- Entrada de imagen -->
+          <div id="aiInputImg" class="hidden">
+            <label class="drop" id="dropImg">
+              <input type="file" id="aImg" accept="image/*" hidden>
+              <i data-lucide="image-plus" style="width:38px; height:38px; color:#4da3ff;"></i>
+              <div class="dt">Sube una foto del cuaderno o pizarra</div>
+              <div class="ds">o haz clic para seleccionar</div>
+            </label>
+            <div class="fname hidden" id="fnameImg"></div>
+          </div>
+
+          <button class="pub ai-btn" id="aiRunBtn">
+            <span>✨ Organizar con IA</span>
+          </button>
+
+          <!-- Vista previa editable, aparece tras llamar a la IA -->
+          <div id="aiPreview" class="hidden">
+            <div class="asec" style="margin-top:20px">🧠 Revisa antes de publicar</div>
+
+            <div class="form-group">
+              <label class="mini-label">Materia detectada</label>
+              <select id="aiMat"></select>
+            </div>
+
+            <div class="form-group">
+              <label class="mini-label">Título de la clase</label>
+              <input type="text" id="aiTit" placeholder="Título">
+            </div>
+
+            <div class="two-col">
+              <div class="form-group">
+                <label class="mini-label">Clase / Grupo</label>
+                <input type="text" id="aiClase" placeholder="4to A">
+              </div>
+              <div class="form-group">
+                <label class="mini-label">Fecha</label>
+                <input type="text" id="aiFecha" placeholder="dd/mm/aaaa">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="mini-label">Contenido (puedes corregirlo)</label>
+              <textarea id="aiBody" rows="10"></textarea>
+            </div>
+
+            <button class="pub" id="aiPublishBtn">
+              <span>📄 Generar PDF y Publicar</span>
+            </button>
+          </div>
+        </div>
 
         <div class="asec">📚 Clases publicadas</div>
         <div class="docs-stack" id="aList"></div>

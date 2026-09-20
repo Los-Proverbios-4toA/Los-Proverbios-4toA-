@@ -569,7 +569,7 @@ body::before {
 
 .form-group { margin-bottom: 12px; }
 
-.acard select, .acard input[type=text] {
+.acard select, .acard input[type=text], .acard textarea {
   width: 100%;
   background: rgba(10, 12, 16, 0.6);
   border: 1px solid rgba(255, 23, 68, 0.25);
@@ -578,7 +578,64 @@ body::before {
   padding: 12px 14px;
   font-size: 0.9rem;
   outline: none;
+  font-family: inherit;
 }
+
+.acard textarea { resize: vertical; line-height: 1.5; }
+
+.mini-label {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* Pestañas de modo (Subir PDF / Crear con IA) */
+.mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.mode-tabs.sub { margin-bottom: 14px; }
+
+.mode-tab {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  border-radius: 12px;
+  padding: 10px 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.mode-tab.on {
+  background: linear-gradient(90deg, rgba(255,23,68,0.18), rgba(255,82,82,0.18));
+  border-color: rgba(255, 23, 68, 0.4);
+  color: #fff;
+}
+
+.ai-btn {
+  background: linear-gradient(90deg, #7c3aed, #a855f7);
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.35);
+  margin-bottom: 4px;
+}
+
+.ai-btn:disabled { opacity: 0.6; cursor: wait; }
 
 .pub {
   width: 100%;

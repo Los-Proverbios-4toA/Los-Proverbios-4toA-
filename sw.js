@@ -1,4 +1,4 @@
-const CACHE_NAME = 'proverbios-4toa-v1';
+const CACHE_NAME = 'proverbios-4toa-v3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -6,10 +6,13 @@ const ASSETS_TO_CACHE = [
   './app.js',
   './fondo.jpg',
   './manifest.json',
+  './plantilla1.pdf',
+  './plantilla2.pdf',
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap',
-  'https://unpkg.com/lucide@latest',
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+  'https://unpkg.com/lucide@latest'
+  // pdf.js y pdf-lib NO se precargan: se descargan solo la primera vez que
+  // alguien abre un PDF o usa "Crear con IA", y de ahí en adelante quedan
+  // en caché igual (ver estrategia network-first más abajo).
 ];
 
 // Instalar y guardar recursos
