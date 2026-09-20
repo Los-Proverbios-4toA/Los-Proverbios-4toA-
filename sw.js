@@ -1,4 +1,4 @@
-const CACHE_NAME = 'proverbios-4toa-v3';
+const CACHE_NAME = 'proverbios-4toa-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

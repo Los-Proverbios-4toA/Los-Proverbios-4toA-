@@ -1,6 +1,3 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, getDocs, getDoc, addDoc, setDoc, updateDoc, deleteDoc, deleteField, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
 // Carga diferida de librerías pesadas: solo se descargan cuando realmente se usan,
 // para que la primera visita a la página sea liviana y rápida.
 function cargarScript(src) {
@@ -31,27 +28,61 @@ function asegurarPdfLib() {
   return _pdfLibListo;
 }
 
-// Configuración de Firebase
-const firebaseConfig = {
-  apiKey: "AIzaSyDNOup0pRqx8ZKTcVrpYvCc8JUB967eLYw",
-  authDomain: "los-proverbios-4toa.firebaseapp.com",
-  projectId: "los-proverbios-4toa",
-  storageBucket: "los-proverbios-4toa.firebasestorage.app",
-  messagingSenderId: "629657930138",
-  appId: "1:629657930138:web:ea4eb998ea8783c8c05223",
-  measurementId: "G-8JE142E4FS"
-};
-
-const app = initializeApp(firebaseConfig);
-
-// Configuración de Supabase (solo se usa como puente seguro hacia la IA de Gemini)
+/* ============================================================
+   SUPABASE — única base de datos y almacenamiento de la app.
+   Se habla con él por REST directo (sin librería extra) para
+   mantener la página liviana.
+   ============================================================ */
 const SUPA_URL = "https://ctyruduakrjtuxwuaqna.supabase.co";
 const SUPA_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN0eXJ1ZHVha3JqdHV4d3VhcW5hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5MTExNzcsImV4cCI6MjEwNTQ4NzE3N30.BXM5IOKmAeMNmo5XoMBzoBoR28Bh3499-VRVumS9A1M";
+const SB_HEADERS = { apikey: SUPA_ANON_KEY, Authorization: `Bearer ${SUPA_ANON_KEY}` };
+const SB_BUCKET = 'clases-pdfs';
 
-// Inicializar Firestore con Caché Offline Persistente en memoria del teléfono
-const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-});
+async function sbListarClases() {
+  const res = await fetch(`${SUPA_URL}/rest/v1/clases?select=id,mi,name,ts,pdf_path&order=ts.desc`, { headers: SB_HEADERS });
+  if (!res.ok) throw new Error('No se pudo cargar la lista de clases');
+  return res.json();
+}
+
+async function sbInsertarClase(row) {
+  const res = await fetch(`${SUPA_URL}/rest/v1/clases`, {
+    method: 'POST',
+    headers: { ...SB_HEADERS, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+    body: JSON.stringify(row)
+  });
+  if (!res.ok) throw new Error('No se pudo guardar la clase en la base de datos');
+  const rows = await res.json();
+  return rows[0];
+}
+
+async function sbEliminarClaseFila(id) {
+  const res = await fetch(`${SUPA_URL}/rest/v1/clases?id=eq.${id}`, { method: 'DELETE', headers: SB_HEADERS });
+  if (!res.ok) throw new Error('No se pudo eliminar de la base de datos');
+}
+
+async function sbSubirArchivo(path, blob) {
+  const res = await fetch(`${SUPA_URL}/storage/v1/object/${SB_BUCKET}/${path}`, {
+    method: 'POST',
+    headers: { ...SB_HEADERS, 'Content-Type': blob.type || 'application/pdf' },
+    body: blob
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error('No se pudo subir el archivo: ' + t.slice(0, 200));
+  }
+}
+
+function sbEliminarArchivo(path) {
+  return fetch(`${SUPA_URL}/storage/v1/object/${SB_BUCKET}`, {
+    method: 'DELETE',
+    headers: { ...SB_HEADERS, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prefixes: [path] })
+  }).catch(() => {});
+}
+
+function sbUrlPublica(path) {
+  return `${SUPA_URL}/storage/v1/object/public/${SB_BUCKET}/${path}`;
+}
 
 const M = [
   { n: 'Matemáticas', c: '#f4b400' },
@@ -89,27 +120,25 @@ function toast(m) {
   tt = setTimeout(() => t.classList.remove('on'), 2900);
 }
 
-// Convertir base64 almacenado a Uint8Array
+// Convertir base64 (solo se usa durante la migración desde Firebase) a Uint8Array
 function getUint8ArrayFromBase64(base64) {
   const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
   const binaryString = atob(base64Data);
   const len = binaryString.length;
   const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
+  for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
   return bytes;
 }
 
-// Obtiene (y cachea en memoria) el PDF real de una clase, solo cuando hace falta
-async function obtenerDataDeClase(index) {
+// Obtiene (y cachea en memoria) los bytes del PDF de una clase, solo cuando hace falta
+async function obtenerBytesDeClase(index) {
   const d = DOCS[index];
   if (!d) return null;
-  if (d.data) return d.data; // ya la tenemos en memoria (o venía embebida, clases sin migrar)
-  const snap = await getDoc(doc(db, 'clases_data', d.id));
-  if (!snap.exists()) throw new Error('No se encontró el archivo de esta clase');
-  d.data = snap.data().data;
-  return d.data;
+  if (d._bytes) return d._bytes;
+  const res = await fetch(sbUrlPublica(d.pdf_path));
+  if (!res.ok) throw new Error('No se encontró el archivo de esta clase');
+  d._bytes = new Uint8Array(await res.arrayBuffer());
+  return d._bytes;
 }
 
 // Visualizador universal de PDF usando Canvas
@@ -123,11 +152,10 @@ window.verPDF = async function(index) {
   $('modal-pdf').classList.remove('hidden');
 
   try {
-    const [_, base64] = await Promise.all([asegurarPdfJs(), obtenerDataDeClase(index)]);
+    const [_, byteArray] = await Promise.all([asegurarPdfJs(), obtenerBytesDeClase(index)]);
     container.innerHTML = '<div class="pdf-loading"><span>⏳ Cargando documento...</span></div>';
 
     if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-    const byteArray = getUint8ArrayFromBase64(base64);
     const blob = new Blob([byteArray], { type: 'application/pdf' });
     currentBlobUrl = URL.createObjectURL(blob);
     $('pdf-open-ext').href = currentBlobUrl;
@@ -159,8 +187,8 @@ window.descargarPDF = async function(index) {
   if (!d) return;
   try {
     toast('⏳ Descargando...');
-    const base64 = await obtenerDataDeClase(index);
-    const blob = new Blob([getUint8ArrayFromBase64(base64)], { type: 'application/pdf' });
+    const byteArray = await obtenerBytesDeClase(index);
+    const blob = new Blob([byteArray], { type: 'application/pdf' });
     const u = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = u;
@@ -178,18 +206,16 @@ window.descargarPDF = async function(index) {
 // Cargar Clases con Respaldo Offline (solo metadatos: rápido sin importar cuántas clases haya)
 async function cargar() {
   try {
-    const s = await getDocs(collection(db, 'clases'));
-    DOCS = s.docs.map(x => ({ id: x.id, ...x.data() }));
+    const rows = await sbListarClases();
+    DOCS = rows;
     DOCS.sort((a, b) => (b.ts || 0) - (a.ts || 0));
 
-    // Guardar respaldo local directo (ahora liviano: sin el contenido del PDF)
     try {
-      localStorage.setItem('4toa_docs_backup', JSON.stringify(DOCS.map(({ data, ...rest }) => rest)));
-    } catch(err) {
+      localStorage.setItem('4toa_docs_backup', JSON.stringify(DOCS.map(({ _bytes, ...rest }) => rest)));
+    } catch (err) {
       console.log('Exceso de almacenamiento local', err);
     }
   } catch (e) {
-    // Si falla la conexión con la red, intentar usar el respaldo guardado
     const backup = localStorage.getItem('4toa_docs_backup');
     if (backup) {
       DOCS = JSON.parse(backup);
@@ -356,31 +382,30 @@ function setFile(f) {
   $('fname').innerHTML = `<span>PDF</span> ${f.name} <span style="color:var(--text-muted); margin-left:auto">${(f.size/1024).toFixed(0)} KB</span>`;
 }
 
+function nombreArchivoAleatorio() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.pdf`;
+}
+
 // Función compartida: sube cualquier PDF (blob) como clase publicada.
-// Guarda los metadatos (livianos) en 'clases' y el PDF pesado aparte en 'clases_data',
-// así la lista siempre carga rápido sin importar cuántas clases haya.
+// El archivo va como objeto real a Supabase Storage; en la tabla solo queda
+// el nombre/materia/fecha y la ruta del archivo — así la lista siempre carga rápido.
 async function publicarBlobComoClase(mi, nombre, blob, botonEl, textoOriginalBtn) {
-  if (blob.size > 900 * 1024) {
-    toast('⚠️ Máx 900 KB. El PDF generado quedó muy pesado.');
+  if (blob.size > 8 * 1024 * 1024) {
+    toast('⚠️ Máx 8 MB por PDF.');
     return false;
   }
   botonEl.disabled = true;
   botonEl.querySelector('span').textContent = '⏳ Subiendo a la nube...';
   try {
-    const data = await new Promise((ok, no) => {
-      const r = new FileReader();
-      r.onload = () => ok(r.result);
-      r.onerror = no;
-      r.readAsDataURL(blob);
-    });
-    const ref = await addDoc(collection(db, 'clases'), { mi, name: nombre, ts: Date.now() });
-    await setDoc(doc(db, 'clases_data', ref.id), { data });
+    const path = nombreArchivoAleatorio();
+    await sbSubirArchivo(path, blob);
+    await sbInsertarClase({ mi, name: nombre, ts: Date.now(), pdf_path: path });
     await cargar();
     renderAdmin();
     toast('✅ Clase publicada para todo el salón');
     return true;
   } catch (e) {
-    toast('⚠️ Error al subir');
+    toast('⚠️ Error al subir: ' + (e.message || ''));
     return false;
   } finally {
     botonEl.disabled = false;
@@ -461,7 +486,7 @@ async function llamarIA(payload) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${SUPA_ANON_KEY}`,
-      'apikey': SUPA_ANON_KEY
+      apikey: SUPA_ANON_KEY
     },
     body: JSON.stringify(payload)
   });
@@ -557,7 +582,6 @@ async function generarPdfConPlantillas({ clase, materia, fecha, titulo, cuerpo }
   const PAGE_W = 595.276, PAGE_H = 841.89;
   const MAX_WIDTH = PAGE_W - MARGIN_X * 2;
 
-  // Parte el texto en líneas que caben dentro del ancho disponible
   function envolverTexto(texto) {
     const lineasFinales = [];
     const parrafos = texto.split('\n');
@@ -581,7 +605,6 @@ async function generarPdfConPlantillas({ clase, materia, fecha, titulo, cuerpo }
 
   const lineas = envolverTexto(cuerpo);
 
-  // --- Página 1: copia de la Plantilla 1 (portada) ---
   const src1 = await PDFDocument.load(plantilla1Bytes);
   const [p1] = await out.copyPages(src1, [0]);
   out.addPage(p1);
@@ -593,7 +616,6 @@ async function generarPdfConPlantillas({ clase, materia, fecha, titulo, cuerpo }
   const tituloW = fontBold.widthOfTextAtSize(titulo, 13);
   p1.drawText(titulo, { x: 297.64 - tituloW / 2, y: 701.5, size: 13, font: fontBold, color: rgb(0, 0, 0) });
 
-  // Cuerpo en la página 1, debajo del título
   let y = 673, li = 0;
   const bottomLimit1 = 55;
   while (li < lineas.length && y > bottomLimit1) {
@@ -602,8 +624,6 @@ async function generarPdfConPlantillas({ clase, materia, fecha, titulo, cuerpo }
     li++;
   }
 
-  // --- Páginas siguientes: copias de la Plantilla 2, hasta terminar el texto ---
-  // topStart queda por debajo de la línea "creado por Juan" para que nunca se encimen
   const topStart = 745, bottomLimit = 60;
   while (li < lineas.length) {
     const src2 = await PDFDocument.load(plantilla2Bytes);
@@ -638,8 +658,9 @@ function renderAdmin() {
 
 window.eliminarClase = async function(id) {
   try {
-    await deleteDoc(doc(db, 'clases', id));
-    await deleteDoc(doc(db, 'clases_data', id)).catch(() => {}); // por si no existía (clase vieja sin migrar)
+    const d = DOCS.find(x => String(x.id) === String(id));
+    await sbEliminarClaseFila(id);
+    if (d && d.pdf_path) await sbEliminarArchivo(d.pdf_path);
     await cargar();
     renderAdmin();
     toast('Clase eliminada');
@@ -649,39 +670,88 @@ window.eliminarClase = async function(id) {
 };
 
 /* ============================================================
-   MIGRACIÓN ÚNICA: separa el PDF pesado de las clases viejas
-   que todavía lo tienen embebido, para que la app cargue rápido.
-   Es seguro ejecutarla varias veces: solo toca lo que falte migrar.
+   MIGRACIÓN ÚNICA DESDE FIREBASE
+   Copia cada clase (metadatos + PDF real) de Firestore hacia
+   Supabase. Firebase solo se carga (bajo demanda) si presionas
+   este botón — el resto de la app nunca lo toca.
+   Es seguro ejecutarla varias veces: lo ya migrado se salta.
    ============================================================ */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDNOup0pRqx8ZKTcVrpYvCc8JUB967eLYw",
+  authDomain: "los-proverbios-4toa.firebaseapp.com",
+  projectId: "los-proverbios-4toa",
+  storageBucket: "los-proverbios-4toa.firebasestorage.app",
+  messagingSenderId: "629657930138",
+  appId: "1:629657930138:web:ea4eb998ea8783c8c05223",
+  measurementId: "G-8JE142E4FS"
+};
+
+let _firebaseListo = null;
+async function obtenerFirestoreLegacy() {
+  if (!_firebaseListo) {
+    _firebaseListo = (async () => {
+      const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const { getFirestore, collection, getDocs, getDoc, doc } =
+        await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const fbApp = initializeApp(FIREBASE_CONFIG);
+      return { db: getFirestore(fbApp), collection, getDocs, getDoc, doc };
+    })();
+  }
+  return _firebaseListo;
+}
+
 const btnMigrar = $('btnMigrar');
 if (btnMigrar) {
   btnMigrar.onclick = async () => {
     btnMigrar.disabled = true;
-    btnMigrar.querySelector('span').textContent = '⏳ Optimizando...';
+    btnMigrar.querySelector('span').textContent = '⏳ Migrando a Supabase...';
     try {
-      const snap = await getDocs(collection(db, 'clases'));
-      let migradas = 0, total = snap.docs.length;
-      for (const docSnap of snap.docs) {
-        const data = docSnap.data();
-        if (data.data) {
-          await setDoc(doc(db, 'clases_data', docSnap.id), { data: data.data });
-          await updateDoc(doc(db, 'clases', docSnap.id), { data: deleteField() });
-          migradas++;
+      const { db, collection, getDocs, getDoc, doc } = await obtenerFirestoreLegacy();
+
+      // Clases ya migradas antes (para no duplicar si se corre de nuevo)
+      const yaRes = await fetch(`${SUPA_URL}/rest/v1/clases?select=firebase_id&firebase_id=not.is.null`, { headers: SB_HEADERS });
+      const yaMigrados = new Set((await yaRes.json()).map(r => r.firebase_id));
+
+      const metaSnap = await getDocs(collection(db, 'clases'));
+      let migradas = 0, saltadas = 0, sinArchivo = 0;
+
+      for (const docSnap of metaSnap.docs) {
+        if (yaMigrados.has(docSnap.id)) { saltadas++; continue; }
+        const meta = docSnap.data();
+
+        let base64 = meta.data; // clases viejas: el PDF venía embebido aquí mismo
+        if (!base64) {
+          const dataSnap = await getDoc(doc(db, 'clases_data', docSnap.id));
+          if (dataSnap.exists()) base64 = dataSnap.data().data;
         }
+        if (!base64) { sinArchivo++; continue; }
+
+        const blob = new Blob([getUint8ArrayFromBase64(base64)], { type: 'application/pdf' });
+        const path = `${meta.ts || Date.now()}-${docSnap.id}.pdf`;
+        await sbSubirArchivo(path, blob);
+        await sbInsertarClase({
+          mi: meta.mi, name: meta.name, ts: meta.ts || Date.now(),
+          pdf_path: path, firebase_id: docSnap.id
+        });
+        migradas++;
       }
+
       await cargar();
       renderAdmin();
+
       if (migradas > 0) {
-        toast(`✅ ${migradas} de ${total} clases optimizadas`);
-      } else {
-        toast('✅ Ya estaba todo optimizado');
+        toast(`✅ ${migradas} clases migradas a Supabase` + (sinArchivo ? ` (${sinArchivo} sin PDF, revisar)` : ''));
+      } else if (saltadas > 0) {
+        toast('✅ Ya estaba todo migrado a Supabase');
         btnMigrar.closest('.form-group')?.classList.add('hidden');
+      } else {
+        toast('No se encontraron clases en Firebase para migrar');
       }
     } catch (e) {
-      toast('⚠️ Error optimizando: ' + e.message);
+      toast('⚠️ Error migrando: ' + (e.message || ''));
     }
     btnMigrar.disabled = false;
-    btnMigrar.querySelector('span').textContent = '🔧 Optimizar clases antiguas';
+    btnMigrar.querySelector('span').textContent = '🚀 Migrar todo a Supabase';
   };
 }
 
@@ -740,4 +810,3 @@ if ('serviceWorker' in navigator) {
       .catch(err => console.error('Error en Service Worker', err));
   });
 }
-
