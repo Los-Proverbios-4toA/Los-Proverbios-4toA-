@@ -105,6 +105,7 @@ const FOLDER = c => `<svg viewBox="0 0 48 40" xmlns="http://www.w3.org/2000/svg"
 let DOCS = [], loaded = false, tt, dropFile = null, currentBlobUrl = null;
 const $ = id => document.getElementById(id);
 const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const soloDigitos = s => (s || '').replace(/\D/g, '');
 const fdate = ts => new Date(ts).toLocaleDateString('es-DO', { day: 'numeric', month: 'short' });
 function fechaHoyDDMMYYYY() {
   const d = new Date();
@@ -306,16 +307,24 @@ $('back2').onclick = () => { $('res').classList.add('hidden'); $('home').classLi
 
 // Buscador
 $('q').oninput = e => {
-  const q = norm(e.target.value.trim());
-  if (!q) {
+  const raw = e.target.value.trim();
+  if (!raw) {
     $('res').classList.add('hidden');
     $('home').classList.remove('hidden');
     return;
   }
 
+  const q = norm(raw);
+  // Búsqueda por fecha: si lo escrito son solo dígitos y separadores de fecha
+  // (/ - . o espacios), comparamos ignorando esos símbolos contra el nombre de la clase.
+  const qDigits = soloDigitos(raw);
+  const esBusquedaDeFecha = qDigits.length >= 6 && /^[\d/\-.\s]+$/.test(raw);
+
   let out = [];
   DOCS.forEach((d, j) => {
-    if (norm(d.name).includes(q) || norm(M[d.mi].n).includes(q)) out.push([d, j]);
+    const coincideTexto = norm(d.name).includes(q) || norm(M[d.mi].n).includes(q);
+    const coincideFecha = esBusquedaDeFecha && soloDigitos(d.name).includes(qDigits);
+    if (coincideTexto || coincideFecha) out.push([d, j]);
   });
 
   $('home').classList.add('hidden');
@@ -513,11 +522,11 @@ $('aiRunBtn').onclick = async () => {
   btn.querySelector('span').textContent = '🧠 Pensando...';
   try {
     const r = await llamarIA(payload);
-    $('aiTit').value = r.title;
+    $('aiTit').value = r.titulo;
     $('aiMat').value = String(M.findIndex(m => m.n === r.materia));
-    $('aiClase').value = $('aiClase').value || '4to A';
-    $('aiFecha').value = $('aiFecha').value || fechaHoyDDMMYYYY();
-    $('aiBody').value = r.body;
+    $('aiClase').value = (r.grupo && r.grupo.trim()) ? r.grupo.trim() : ($('aiClase').value || '4to A');
+    $('aiFecha').value = (r.fecha && r.fecha.trim()) ? r.fecha.trim() : ($('aiFecha').value || fechaHoyDDMMYYYY());
+    $('aiBody').value = r.contenido;
     $('aiPreview').classList.remove('hidden');
     $('aiPreview').scrollIntoView({ behavior: 'smooth', block: 'start' });
     toast('✅ Contenido organizado, revísalo antes de publicar');
