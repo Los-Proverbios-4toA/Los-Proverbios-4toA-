@@ -52,11 +52,32 @@
     <div class="search-wrapper">
       <i data-lucide="search" class="search-icon"></i>
       <input type="text" id="q" placeholder="Buscar clases, temas o materias..." autocomplete="off">
+      <button id="notifBtn" class="notif-btn" title="Activar notificaciones">
+        <i data-lucide="bell" style="width:16px; height:16px;"></i>
+      </button>
     </div>
+
+    <!-- Chip de Tareas pendientes -->
+    <button id="tareasChip" class="tareas-chip hidden">
+      <i data-lucide="clipboard-list" style="width:13px; height:13px;"></i>
+      <span id="tareasChipTxt">Tareas</span>
+    </button>
 
     <!-- Vista Principal: Materias -->
     <main id="home">
       <div id="grid" class="grid-materias"></div>
+    </main>
+
+    <!-- Vista de Tareas pendientes -->
+    <main id="tareas" class="hidden animate-fade">
+      <button id="backTareas" class="btn-back">
+        <i data-lucide="arrow-left"></i> Volver a materias
+      </button>
+      <div class="materia-header">
+        <div class="header-icon-box"><i data-lucide="clipboard-list"></i></div>
+        <h2>Tareas pendientes</h2>
+      </div>
+      <div id="tareasList" class="docs-stack"></div>
     </main>
 
     <!-- Vista de Materia Específica -->

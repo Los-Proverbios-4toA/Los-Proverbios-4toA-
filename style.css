@@ -193,7 +193,7 @@ body::before {
 
 #q {
   width: 100%;
-  padding: 14px 18px 14px 50px;
+  padding: 14px 46px 14px 50px;
   border-radius: 24px;
   background: var(--surface-card);
   backdrop-filter: blur(12px);
@@ -207,6 +207,74 @@ body::before {
 #q:focus {
   border-color: rgba(255, 23, 68, 0.5);
   box-shadow: 0 0 0 4px rgba(255, 23, 68, 0.15);
+}
+
+.notif-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.notif-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.14); }
+.notif-btn.on { color: #ffd166; border-color: rgba(255, 209, 102, 0.4); background: rgba(255, 209, 102, 0.12); }
+
+/* Chip de Tareas pendientes */
+.tareas-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 209, 102, 0.1);
+  border: 1px solid rgba(255, 209, 102, 0.3);
+  color: #ffd166;
+  padding: 7px 13px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 16px;
+}
+
+.btn-share {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: none;
+  transition: all 0.2s;
+}
+
+.btn-share:hover { background: rgba(255, 255, 255, 0.16); }
+
+.tarea-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: #ffd166;
+  background: rgba(255, 209, 102, 0.1);
+  border: 1px solid rgba(255, 209, 102, 0.25);
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-top: 6px;
+  width: fit-content;
 }
 
 /* Grid de Materias */

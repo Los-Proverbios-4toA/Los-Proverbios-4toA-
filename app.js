@@ -39,7 +39,7 @@ const SB_HEADERS = { apikey: SUPA_ANON_KEY, Authorization: `Bearer ${SUPA_ANON_K
 const SB_BUCKET = 'clases-pdfs';
 
 async function sbListarClases() {
-  const res = await fetch(`${SUPA_URL}/rest/v1/clases?select=id,mi,name,ts,pdf_path&order=ts.desc`, { headers: SB_HEADERS });
+  const res = await fetch(`${SUPA_URL}/rest/v1/clases?select=id,mi,name,ts,pdf_path,tarea&order=ts.desc`, { headers: SB_HEADERS });
   if (!res.ok) throw new Error('No se pudo cargar la lista de clases');
   return res.json();
 }
@@ -82,6 +82,62 @@ function sbEliminarArchivo(path) {
 
 function sbUrlPublica(path) {
   return `${SUPA_URL}/storage/v1/object/public/${SB_BUCKET}/${path}`;
+}
+
+/* ============================================================
+   NOTIFICACIONES PUSH
+   ============================================================ */
+const VAPID_PUBLIC_KEY = 'BLaaMSMYqywnXHBiasXAPTtQ-UYvjJdAhPiSfQV42sXXCLp7tqNnz-MFTZ43fo3cMkVBF2W87BFSDFnM1IfQqa0';
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+async function activarNotificaciones() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    toast('Tu navegador no soporta notificaciones');
+    return false;
+  }
+  try {
+    const permiso = await Notification.requestPermission();
+    if (permiso !== 'granted') { toast('No se activaron las notificaciones'); return false; }
+
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    }
+
+    const json = sub.toJSON();
+    await fetch(`${SUPA_URL}/rest/v1/push_subscriptions`, {
+      method: 'POST',
+      headers: { ...SB_HEADERS, 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates' },
+      body: JSON.stringify({ endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth })
+    });
+
+    localStorage.setItem('4toa_notif_on', '1');
+    toast('🔔 Notificaciones activadas');
+    return true;
+  } catch (e) {
+    toast('No se pudo activar: ' + (e.message || ''));
+    return false;
+  }
+}
+
+function enviarNotificacionNuevaClase(materiaNombre, titulo) {
+  fetch(`${SUPA_URL}/functions/v1/send-push`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPA_ANON_KEY}`, apikey: SUPA_ANON_KEY },
+    body: JSON.stringify({ materia: materiaNombre, titulo })
+  }).catch(() => {}); // Si falla, no interrumpe la publicación de la clase
 }
 
 const M = [
@@ -204,6 +260,24 @@ window.descargarPDF = async function(index) {
   }
 };
 
+// Compartir el link directo de una clase (menú nativo del teléfono; si no existe, WhatsApp)
+window.compartirClase = async function(index) {
+  const d = DOCS[index];
+  if (!d) return;
+  const link = sbUrlPublica(d.pdf_path);
+  const titulo = `${M[d.mi].n} — ${d.name}`;
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: titulo, text: '📚 ' + titulo, url: link });
+      return;
+    } catch (e) {
+      return; // el usuario canceló el menú de compartir
+    }
+  }
+  window.open(`https://wa.me/?text=${encodeURIComponent('📚 ' + titulo + '\n' + link)}`, '_blank');
+};
+
 // Cargar Clases con Respaldo Offline (solo metadatos: rápido sin importar cuántas clases haya)
 async function cargar() {
   try {
@@ -227,6 +301,7 @@ async function cargar() {
   }
   loaded = true;
   renderGrid();
+  actualizarTareasChip();
 }
 
 // Renderizar tarjetas de materias
@@ -245,6 +320,44 @@ function renderGrid() {
     `;
   }).join('') : '';
 }
+
+/* ============================================================
+   CHIP Y VISTA DE "TAREAS PENDIENTES"
+   ============================================================ */
+function actualizarTareasChip() {
+  const conTarea = DOCS.filter(d => d.tarea && d.tarea.trim());
+  const chip = $('tareasChip');
+  if (!conTarea.length) { chip.classList.add('hidden'); return; }
+  chip.classList.remove('hidden');
+  $('tareasChipTxt').textContent = `${conTarea.length} tarea${conTarea.length === 1 ? '' : 's'} pendiente${conTarea.length === 1 ? '' : 's'}`;
+}
+
+$('tareasChip').onclick = () => {
+  $('home').classList.add('hidden');
+  $('subj').classList.add('hidden');
+  $('res').classList.add('hidden');
+  $('admin').classList.add('hidden');
+  $('tareas').classList.remove('hidden');
+
+  const conTarea = DOCS.map((d, j) => [d, j]).filter(x => x[0].tarea && x[0].tarea.trim());
+  $('tareasList').innerHTML = conTarea.length ? conTarea.map(([d, j]) => `
+    <div class="doc-card" style="flex-direction:column; align-items:flex-start; gap:8px;">
+      <div class="doc-info" style="width:100%">
+        <span class="doc-title">${d.name}</span>
+        <span class="doc-meta" style="color:${M[d.mi].c}">● ${M[d.mi].n} · ${fdate(d.ts)}</span>
+      </div>
+      <div class="tarea-badge">📌 ${d.tarea}</div>
+      <button class="btn-view-pdf" style="width:100%; justify-content:center;" onclick="verPDF(${j})">
+        <span>Ver clase completa</span>
+        <i data-lucide="external-link" style="width:14px; height:14px;"></i>
+      </button>
+    </div>
+  `).join('') : '<div style="text-align:center; color:var(--text-muted); padding:30px 0;">No hay tareas pendientes.</div>';
+
+  if (window.lucide) lucide.createIcons();
+};
+
+$('backTareas').onclick = () => { $('tareas').classList.add('hidden'); $('home').classList.remove('hidden'); };
 
 $('grid').onclick = e => {
   const c = e.target.closest('.folder');
@@ -285,6 +398,9 @@ function renderListaDocumentos(items, containerId, mensajeVacio) {
           </span>
         </div>
         <div class="doc-actions">
+          <button class="btn-share" onclick="compartirClase(${index})" title="Compartir">
+            <i data-lucide="share" style="width:15px; height:15px;"></i>
+          </button>
           <button class="btn-download-pdf" onclick="descargarPDF(${index})" title="Descargar PDF">
             <i data-lucide="download" style="width:14px; height:14px;"></i>
             <span>PDF</span>
@@ -304,6 +420,13 @@ function renderListaDocumentos(items, containerId, mensajeVacio) {
 // Navegación
 $('back').onclick = () => { $('subj').classList.add('hidden'); $('home').classList.remove('hidden'); };
 $('back2').onclick = () => { $('res').classList.add('hidden'); $('home').classList.remove('hidden'); };
+
+// Botón de notificaciones
+if (localStorage.getItem('4toa_notif_on') === '1') $('notifBtn').classList.add('on');
+$('notifBtn').onclick = async () => {
+  const ok = await activarNotificaciones();
+  if (ok) $('notifBtn').classList.add('on');
+};
 
 // Buscador
 $('q').oninput = e => {
@@ -398,7 +521,7 @@ function nombreArchivoAleatorio() {
 // Función compartida: sube cualquier PDF (blob) como clase publicada.
 // El archivo va como objeto real a Supabase Storage; en la tabla solo queda
 // el nombre/materia/fecha y la ruta del archivo — así la lista siempre carga rápido.
-async function publicarBlobComoClase(mi, nombre, blob, botonEl, textoOriginalBtn) {
+async function publicarBlobComoClase(mi, nombre, blob, botonEl, textoOriginalBtn, extra = {}) {
   if (blob.size > 8 * 1024 * 1024) {
     toast('⚠️ Máx 8 MB por PDF.');
     return false;
@@ -408,9 +531,12 @@ async function publicarBlobComoClase(mi, nombre, blob, botonEl, textoOriginalBtn
   try {
     const path = nombreArchivoAleatorio();
     await sbSubirArchivo(path, blob);
-    await sbInsertarClase({ mi, name: nombre, ts: Date.now(), pdf_path: path });
+    const fila = { mi, name: nombre, ts: Date.now(), pdf_path: path };
+    if (extra.tarea && extra.tarea.trim()) fila.tarea = extra.tarea.trim();
+    await sbInsertarClase(fila);
     await cargar();
     renderAdmin();
+    enviarNotificacionNuevaClase(M[mi].n, nombre);
     toast('✅ Clase publicada para todo el salón');
     return true;
   } catch (e) {
@@ -504,6 +630,8 @@ async function llamarIA(payload) {
   return json; // { title, materia, body }
 }
 
+let ultimaTareaIA = '';
+
 $('aiRunBtn').onclick = async () => {
   const btn = $('aiRunBtn');
   let payload;
@@ -527,9 +655,10 @@ $('aiRunBtn').onclick = async () => {
     $('aiClase').value = (r.grupo && r.grupo.trim()) ? r.grupo.trim() : ($('aiClase').value || '4to A');
     $('aiFecha').value = (r.fecha && r.fecha.trim()) ? r.fecha.trim() : ($('aiFecha').value || fechaHoyDDMMYYYY());
     $('aiBody').value = r.contenido;
+    ultimaTareaIA = r.tarea || '';
     $('aiPreview').classList.remove('hidden');
     $('aiPreview').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    toast('✅ Contenido organizado, revísalo antes de publicar');
+    toast(ultimaTareaIA ? '✅ Organizado — se detectó una tarea 📌' : '✅ Contenido organizado, revísalo antes de publicar');
   } catch (e) {
     toast('⚠️ ' + (e.message || 'Error con la IA'));
   }
@@ -554,11 +683,12 @@ $('aiPublishBtn').onclick = async () => {
   try {
     const pdfBytes = await generarPdfConPlantillas({ clase, materia: M[mi].n, fecha, titulo, cuerpo });
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const ok = await publicarBlobComoClase(mi, titulo, blob, btn, '📄 Generar PDF y Publicar');
+    const ok = await publicarBlobComoClase(mi, titulo, blob, btn, '📄 Generar PDF y Publicar', { tarea: ultimaTareaIA });
     if (ok) {
       $('aiText').value = '';
       $('aImg').value = '';
       imgFile = null;
+      ultimaTareaIA = '';
       $('fnameImg').classList.add('hidden');
       $('aiPreview').classList.add('hidden');
     }
