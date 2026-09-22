@@ -854,3 +854,67 @@ footer {
   to { opacity: 1; }
 }
 
+/* ============================================================
+   MOVIMIENTO — corto y con propósito, no decorativo.
+   ============================================================ */
+
+/* Entrada de tarjetas: rápida y sutil, responde a una acción
+   del usuario (abrir una materia, buscar, etc.), nunca al scroll. */
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.card-in {
+  animation: cardIn 0.22s ease-out both;
+}
+
+/* Feedback táctil: respuesta inmediata al tocar, se siente más premium */
+.folder,
+.doc-card,
+.btn-view-pdf,
+.btn-download-pdf,
+.btn-share,
+.notif-btn,
+.tareas-chip,
+.pub,
+.mode-tab {
+  transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.folder:active,
+.btn-view-pdf:active,
+.btn-download-pdf:active,
+.btn-share:active,
+.notif-btn:active,
+.tareas-chip:active,
+.pub:active {
+  transform: scale(0.96);
+}
+
+.doc-card:active { transform: scale(0.99); }
+
+/* Transiciones nativas entre pantallas: cortas (no genéricas de 400ms+) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 160ms;
+  animation-timing-function: ease-out;
+}
+
+::view-transition-group(*) {
+  animation-duration: 180ms;
+}
+
+/* Respeta "reducir movimiento" del sistema: sin animaciones */
+@media (prefers-reduced-motion: reduce) {
+  .card-in { animation: none; }
+  .folder, .doc-card, .btn-view-pdf, .btn-download-pdf, .btn-share, .notif-btn, .tareas-chip, .pub {
+    transition: none;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+}
+

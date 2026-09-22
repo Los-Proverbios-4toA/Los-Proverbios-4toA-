@@ -169,6 +169,26 @@ function fechaHoyDDMMYYYY() {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
+/* ============================================================
+   TRANSICIONES DE PANTALLA — usa la View Transitions API nativa
+   del navegador (sin librerías) para un morphing corto y suave
+   entre vistas. Si el navegador no la soporta, o la persona pidió
+   "reducir movimiento" en su teléfono, simplemente no anima.
+   ============================================================ */
+const prefiereMenosMovimiento = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function conTransicion(fn) {
+  if (prefiereMenosMovimiento || !document.startViewTransition) { fn(); return; }
+  document.startViewTransition(fn);
+}
+
+// Efecto de "la tarjeta se convierte en el encabezado" al abrir una materia
+function marcarElementoCompartido(nombre, activar) {
+  const box = document.querySelector('#subj .header-icon-box');
+  if (!box) return;
+  box.style.viewTransitionName = activar ? nombre : '';
+}
+
 function toast(m) {
   const t = $('toast');
   t.textContent = m;
@@ -206,7 +226,7 @@ window.verPDF = async function(index) {
   const container = $('pdf-viewer-container');
   container.innerHTML = '<div class="pdf-loading"><span>⏳ Descargando esta clase...</span></div>';
   $('pdf-modal-title').textContent = d.name;
-  $('modal-pdf').classList.remove('hidden');
+  conTransicion(() => { $('modal-pdf').classList.remove('hidden'); });
 
   try {
     const [_, byteArray] = await Promise.all([asegurarPdfJs(), obtenerBytesDeClase(index)]);
@@ -217,7 +237,10 @@ window.verPDF = async function(index) {
     currentBlobUrl = URL.createObjectURL(blob);
     $('pdf-open-ext').href = currentBlobUrl;
 
-    const pdfDoc = await pdfjsLib.getDocument({ data: byteArray }).promise;
+    // Se le pasa una COPIA a pdf.js: su Worker interno "roba" (transfiere) el
+    // buffer original al procesarlo, dejándolo vacío. Si no copiamos, la
+    // próxima vez que se abra el mismo PDF (usando el caché en memoria) falla.
+    const pdfDoc = await pdfjsLib.getDocument({ data: byteArray.slice() }).promise;
     container.innerHTML = '';
 
     for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
@@ -310,8 +333,8 @@ function renderGrid() {
     const list = DOCS.filter(x => x.mi == i);
     const md = list.length ? 'Modificado ' + fdate(Math.max(...list.map(x => x.ts || 0))) : 'Sin clases aún';
     return `
-      <div class="folder" data-i="${i}">
-        <div class="ficon">${FOLDER(m.c)}</div>
+      <div class="folder card-in" data-i="${i}" style="animation-delay:${Math.min(i * 25, 150)}ms">
+        <div class="ficon" style="view-transition-name:ficon-${i}">${FOLDER(m.c)}</div>
         <div class="ftxt">
           <div class="fn">${m.n}</div>
           <div class="fm">${md}</div>
@@ -333,31 +356,33 @@ function actualizarTareasChip() {
 }
 
 $('tareasChip').onclick = () => {
-  $('home').classList.add('hidden');
-  $('subj').classList.add('hidden');
-  $('res').classList.add('hidden');
-  $('admin').classList.add('hidden');
-  $('tareas').classList.remove('hidden');
+  conTransicion(() => {
+    $('home').classList.add('hidden');
+    $('subj').classList.add('hidden');
+    $('res').classList.add('hidden');
+    $('admin').classList.add('hidden');
+    $('tareas').classList.remove('hidden');
 
-  const conTarea = DOCS.map((d, j) => [d, j]).filter(x => x[0].tarea && x[0].tarea.trim());
-  $('tareasList').innerHTML = conTarea.length ? conTarea.map(([d, j]) => `
-    <div class="doc-card" style="flex-direction:column; align-items:flex-start; gap:8px;">
-      <div class="doc-info" style="width:100%">
-        <span class="doc-title">${d.name}</span>
-        <span class="doc-meta" style="color:${M[d.mi].c}">● ${M[d.mi].n} · ${fdate(d.ts)}</span>
+    const conTarea = DOCS.map((d, j) => [d, j]).filter(x => x[0].tarea && x[0].tarea.trim());
+    $('tareasList').innerHTML = conTarea.length ? conTarea.map(([d, j], idx) => `
+      <div class="doc-card card-in" style="flex-direction:column; align-items:flex-start; gap:8px; animation-delay:${Math.min(idx * 25, 150)}ms">
+        <div class="doc-info" style="width:100%">
+          <span class="doc-title">${d.name}</span>
+          <span class="doc-meta" style="color:${M[d.mi].c}">● ${M[d.mi].n} · ${fdate(d.ts)}</span>
+        </div>
+        <div class="tarea-badge">📌 ${d.tarea}</div>
+        <button class="btn-view-pdf" style="width:100%; justify-content:center;" onclick="verPDF(${j})">
+          <span>Ver clase completa</span>
+          <i data-lucide="external-link" style="width:14px; height:14px;"></i>
+        </button>
       </div>
-      <div class="tarea-badge">📌 ${d.tarea}</div>
-      <button class="btn-view-pdf" style="width:100%; justify-content:center;" onclick="verPDF(${j})">
-        <span>Ver clase completa</span>
-        <i data-lucide="external-link" style="width:14px; height:14px;"></i>
-      </button>
-    </div>
-  `).join('') : '<div style="text-align:center; color:var(--text-muted); padding:30px 0;">No hay tareas pendientes.</div>';
+    `).join('') : '<div style="text-align:center; color:var(--text-muted); padding:30px 0;">No hay tareas pendientes.</div>';
 
-  if (window.lucide) lucide.createIcons();
+    if (window.lucide) lucide.createIcons();
+  });
 };
 
-$('backTareas').onclick = () => { $('tareas').classList.add('hidden'); $('home').classList.remove('hidden'); };
+$('backTareas').onclick = () => conTransicion(() => { $('tareas').classList.add('hidden'); $('home').classList.remove('hidden'); });
 
 $('grid').onclick = e => {
   const c = e.target.closest('.folder');
@@ -366,15 +391,18 @@ $('grid').onclick = e => {
 
 // Abrir vista de materia
 function openSub(i) {
-  const m = M[i];
-  $('home').classList.add('hidden');
-  $('res').classList.add('hidden');
-  $('admin').classList.add('hidden');
-  $('subj').classList.remove('hidden');
-  $('sname').textContent = m.n;
+  conTransicion(() => {
+    marcarElementoCompartido(`ficon-${i}`, true);
+    const m = M[i];
+    $('home').classList.add('hidden');
+    $('res').classList.add('hidden');
+    $('admin').classList.add('hidden');
+    $('subj').classList.remove('hidden');
+    $('sname').textContent = m.n;
 
-  const list = DOCS.map((d, j) => [d, j]).filter(x => x[0].mi == i);
-  renderListaDocumentos(list, 'docs', `Aún no hay clases de ${m.n}.`);
+    const list = DOCS.map((d, j) => [d, j]).filter(x => x[0].mi == i);
+    renderListaDocumentos(list, 'docs', `Aún no hay clases de ${m.n}.`);
+  });
 }
 
 // Renderizar lista
@@ -385,11 +413,11 @@ function renderListaDocumentos(items, containerId, mensajeVacio) {
     return;
   }
 
-  container.innerHTML = items.map(x => {
+  container.innerHTML = items.map((x, idx) => {
     const d = x[0];
     const index = x[1];
     return `
-      <div class="doc-card">
+      <div class="doc-card card-in" style="animation-delay:${Math.min(idx * 25, 150)}ms">
         <div class="doc-info">
           <span class="doc-title" title="${d.name}">${d.name}</span>
           <span class="doc-meta">
@@ -418,8 +446,8 @@ function renderListaDocumentos(items, containerId, mensajeVacio) {
 }
 
 // Navegación
-$('back').onclick = () => { $('subj').classList.add('hidden'); $('home').classList.remove('hidden'); };
-$('back2').onclick = () => { $('res').classList.add('hidden'); $('home').classList.remove('hidden'); };
+$('back').onclick = () => conTransicion(() => { $('subj').classList.add('hidden'); $('home').classList.remove('hidden'); });
+$('back2').onclick = () => conTransicion(() => { $('res').classList.add('hidden'); $('home').classList.remove('hidden'); });
 
 // Botón de notificaciones
 if (localStorage.getItem('4toa_notif_on') === '1') $('notifBtn').classList.add('on');
@@ -428,12 +456,15 @@ $('notifBtn').onclick = async () => {
   if (ok) $('notifBtn').classList.add('on');
 };
 
-// Buscador
+// Buscador (solo transiciona al cambiar de pantalla, no en cada tecla)
 $('q').oninput = e => {
   const raw = e.target.value.trim();
+  const home = $('home'), res = $('res');
+
   if (!raw) {
-    $('res').classList.add('hidden');
-    $('home').classList.remove('hidden');
+    if (home.classList.contains('hidden')) {
+      conTransicion(() => { res.classList.add('hidden'); home.classList.remove('hidden'); });
+    }
     return;
   }
 
@@ -450,17 +481,21 @@ $('q').oninput = e => {
     if (coincideTexto || coincideFecha) out.push([d, j]);
   });
 
-  $('home').classList.add('hidden');
-  $('subj').classList.add('hidden');
-  $('res').classList.remove('hidden');
-  $('rtitle').textContent = `Resultados (${out.length})`;
+  const entrandoAResultados = res.classList.contains('hidden');
+  const pintar = () => {
+    home.classList.add('hidden');
+    $('subj').classList.add('hidden');
+    res.classList.remove('hidden');
+    $('rtitle').textContent = `Resultados (${out.length})`;
+    renderListaDocumentos(out, 'rlist', 'No se encontró nada.');
+  };
 
-  renderListaDocumentos(out, 'rlist', 'No se encontró nada.');
+  if (entrandoAResultados) conTransicion(pintar); else pintar();
 };
 
 // Modal visor PDF - Cerrar
 $('cerrar-modal').onclick = () => {
-  $('modal-pdf').classList.add('hidden');
+  conTransicion(() => { $('modal-pdf').classList.add('hidden'); });
   $('pdf-viewer-container').innerHTML = '';
   if (currentBlobUrl) {
     URL.revokeObjectURL(currentBlobUrl);
@@ -489,15 +524,14 @@ $('pass').onkeydown = e => { if (e.key === 'Enter') tryUnlock(); };
 function tryUnlock() {
   if ($('pass').value === 'juan4a') {
     $('lock').classList.remove('on');
-    $('admin').classList.remove('hidden');
-    renderAdmin();
+    conTransicion(() => { $('admin').classList.remove('hidden'); renderAdmin(); });
     window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
   } else {
     toast('Contraseña incorrecta');
   }
 }
 
-$('cerrarAdmin').onclick = () => { $('admin').classList.add('hidden'); };
+$('cerrarAdmin').onclick = () => conTransicion(() => { $('admin').classList.add('hidden'); });
 
 // Drag and drop archivo
 const dz = $('drop');
@@ -781,7 +815,7 @@ async function generarPdfConPlantillas({ clase, materia, fecha, titulo, cuerpo }
 
 function renderAdmin() {
   $('aList').innerHTML = DOCS.length ? DOCS.map((d, i) => `
-    <div class="doc-card">
+    <div class="doc-card card-in" style="animation-delay:${Math.min(i * 25, 150)}ms">
       <div class="doc-info">
         <span class="doc-title">${d.name}</span>
         <span class="doc-meta" style="color:${M[d.mi].c}">● ${M[d.mi].n} · ${fdate(d.ts)}</span>
