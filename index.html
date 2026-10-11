@@ -35,17 +35,29 @@
   <div class="wrap">
     <header class="app-header">
       <div class="top-bar">
-        <div class="status-badge">
-          <span class="pulse-dot"></span>
-          <span>APOYO GRUPAL</span>
+        <div class="top-left">
+          <button id="menuBtn" class="menu-btn" type="button" aria-label="Abrir menú">
+            <i data-lucide="menu"></i>
+          </button>
+          <div class="status-badge">
+            <span class="pulse-dot"></span>
+            <span>APOYO GRUPAL</span>
+          </div>
         </div>
-        <a href="https://chat.whatsapp.com/H0XtL3utmXS45aokIqlvV9?s=cl&p=a&mlu=4&ilr=4" target="_blank" rel="noopener noreferrer" class="btn-whatsapp">
-          <i data-lucide="message-circle"></i>
-          <span>Grupo de WhatsApp</span>
-        </a>
       </div>
-      <h1>Los Proverbios <span class="grade-gradient">4toA</span></h1>
-      <p class="subtitle">by Juan • la constancia es la clave..</p>
+      <h1 class="title-row">
+        <span class="coin" aria-hidden="true">
+          <span class="coin-canto c1"><img src="favicon.png" alt=""></span>
+          <span class="coin-canto c2"><img src="favicon.png" alt=""></span>
+          <span class="coin-canto c3"><img src="favicon.png" alt=""></span>
+          <span class="coin-canto c4"><img src="favicon.png" alt=""></span>
+          <span class="coin-canto c5"><img src="favicon.png" alt=""></span>
+          <span class="coin-cara frente"><img src="favicon.png" alt=""></span>
+          <span class="coin-cara atras"><img src="favicon.png" alt=""></span>
+        </span>
+        <span>Los Proverbios <span class="grade-gradient">4toA</span></span>
+      </h1>
+      <p class="subtitle">by Juan • la disciplina es la clave.</p>
     </header>
 
     <!-- Buscador -->
@@ -56,12 +68,6 @@
         <i data-lucide="bell" style="width:16px; height:16px;"></i>
       </button>
     </div>
-
-    <!-- Chip de Tareas pendientes -->
-    <button id="tareasChip" class="tareas-chip hidden">
-      <i data-lucide="clipboard-list" style="width:13px; height:13px;"></i>
-      <span id="tareasChipTxt">Tareas</span>
-    </button>
 
     <!-- Vista Principal: Materias -->
     <main id="home">
@@ -81,6 +87,18 @@
     </main>
 
     <!-- Vista de Materia Específica -->
+    <main id="docsV" class="hidden animate-fade">
+      <button id="backDocs" class="btn-back">
+        <i data-lucide="arrow-left"></i> Volver a materias
+      </button>
+      <div class="materia-header">
+        <div class="header-icon-box"><i data-lucide="file-text"></i></div>
+        <h2>Guías y documentos</h2>
+      </div>
+      <p class="docs-note">Archivos de Word que publican los profesores. No pertenecen a ninguna materia.</p>
+      <div id="docsList" class="docs-stack"></div>
+    </main>
+
     <main id="subj" class="hidden animate-fade">
       <button id="back" class="btn-back">
         <i data-lucide="arrow-left"></i> Volver a materias
@@ -124,7 +142,7 @@
         <!-- Selector de modo -->
         <div class="mode-tabs">
           <button class="mode-tab on" id="tabUpload" data-mode="upload">
-            <i data-lucide="file-up" style="width:15px; height:15px;"></i> Subir PDF
+            <i data-lucide="file-up" style="width:15px; height:15px;"></i> Subir PDF o Word
           </button>
           <button class="mode-tab" id="tabAI" data-mode="ai">
             <i data-lucide="sparkles" style="width:15px; height:15px;"></i> Crear con IA
@@ -134,18 +152,20 @@
         <!-- ===== MODO 1: Subir PDF manual ===== -->
         <div id="modeUpload">
           <label class="drop" id="drop">
-            <input type="file" id="aFile" accept="application/pdf" hidden>
+            <input type="file" id="aFile" accept=".pdf,.doc,.docx" hidden>
             <i data-lucide="file-up" style="width:38px; height:38px; color:#4da3ff;"></i>
-            <div class="dt">Arrastra y suelta tu archivo PDF</div>
+            <div class="dt">Arrastra y suelta tu archivo</div>
             <div class="ds">o haz clic para seleccionar</div>
-            <div class="df">📄 Formato permitido: PDF</div>
+            <div class="df">Formatos: PDF, DOC o DOCX</div>
           </label>
 
           <div class="fname hidden" id="fname"></div>
 
-          <div class="form-group">
+          <div class="form-group" id="grpMat">
             <select id="aMat"></select>
           </div>
+
+          <div class="word-note hidden" id="wordNote">El Word se guardará en «Guías y documentos», no en una materia.</div>
 
           <div class="form-group">
             <input type="text" id="aTit" placeholder="Título de la clase">
@@ -254,17 +274,27 @@
     </div>
   </div>
 
-  <!-- Modal Bloqueo Admin -->
+  <!-- Acceso privado: teclado de PIN dibujado en pantalla -->
   <div class="ov" id="lock">
-    <div class="lockbox">
-      <div class="lshield"><i data-lucide="shield-check" style="width:32px; height:32px; color:#8b5cf6;"></i></div>
-      <div class="lt">Acceso de Administrador</div>
-      <div class="ls">Ingresa la contraseña para entrar al menú</div>
-      <div class="pwrap2">
-        <input type="password" id="pass" placeholder="Escribe tu contraseña">
-        <button class="ey" id="eye"><i data-lucide="eye"></i></button>
+    <div class="lockbox pinbox">
+      <div class="lshield"><i data-lucide="lock" style="width:30px; height:30px; color:#8b5cf6;"></i></div>
+      <div class="lt">Acceso privado</div>
+      <div class="ls" id="pinMsg">Ingresa tu PIN de 4 dígitos</div>
+      <div class="pin-dots" id="pinDots"><span></span><span></span><span></span><span></span></div>
+      <div class="pin-pad" id="pinPad">
+        <button class="pin-key" type="button" data-k="1">1</button>
+        <button class="pin-key" type="button" data-k="2">2</button>
+        <button class="pin-key" type="button" data-k="3">3</button>
+        <button class="pin-key" type="button" data-k="4">4</button>
+        <button class="pin-key" type="button" data-k="5">5</button>
+        <button class="pin-key" type="button" data-k="6">6</button>
+        <button class="pin-key" type="button" data-k="7">7</button>
+        <button class="pin-key" type="button" data-k="8">8</button>
+        <button class="pin-key" type="button" data-k="9">9</button>
+        <span class="pin-empty"></span>
+        <button class="pin-key" type="button" data-k="0">0</button>
+        <button class="pin-key pin-del" type="button" data-k="del" aria-label="Borrar"><i data-lucide="delete"></i></button>
       </div>
-      <button class="pub" id="unlock">Entrar</button>
       <button class="demo" id="cancelLock">Cancelar</button>
     </div>
   </div>
@@ -273,7 +303,35 @@
   <div id="toast"></div>
 
   <!-- Firebase Scripts (v10 Modular) -->
+  <!-- Menú lateral -->
+  <div id="menuOverlay" class="menu-overlay"></div>
+  <aside id="menuLateral" class="menu-drawer" aria-hidden="true">
+    <div class="menu-head">
+      <span class="menu-title">Menú</span>
+      <button id="menuClose" class="menu-close" type="button" aria-label="Cerrar menú">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+    <nav class="menu-items">
+      <button id="menuTareas" class="menu-item" type="button">
+        <i data-lucide="clipboard-list"></i>
+        <span>Tareas importantes</span>
+        <b id="menuTareasCount" class="menu-count hidden">0</b>
+      </button>
+      <button id="menuDocs" class="menu-item" type="button">
+        <i data-lucide="file-text"></i>
+        <span>Guías y documentos</span>
+        <b id="menuDocsCount" class="menu-count hidden">0</b>
+      </button>
+      <a class="menu-item" href="https://chat.whatsapp.com/H0XtL3utmXS45aokIqlvV9?s=cl&p=a&mlu=4&ilr=4" target="_blank" rel="noopener noreferrer">
+        <i data-lucide="message-circle"></i>
+        <span>Grupo de WhatsApp</span>
+      </a>
+    </nav>
+  </aside>
+
   <script type="module" src="app.js"></script>
+  <script defer src="viento.js"></script>
 </body>
 </html>
 

@@ -1,6 +1,6 @@
 :root {
   --bg-dark: #05070a;
-  --surface-card: rgba(12, 16, 23, 0.88);
+  --surface-card: rgba(12, 16, 23, 0.93);
   --surface-hover: rgba(22, 29, 42, 0.95);
   --border-subtle: rgba(255, 255, 255, 0.07);
   --border-focus: rgba(255, 23, 68, 0.5);
@@ -39,7 +39,7 @@ body::before {
   left: -5%;
   width: 110%;
   height: 110%;
-  background: linear-gradient(rgba(5, 7, 11, 0.88), rgba(5, 7, 11, 0.94)), url('fondo.jpg') no-repeat center center;
+  background: linear-gradient(rgba(5, 7, 11, 0.55), rgba(5, 7, 11, 0.72)), url('fondo.png') no-repeat center center;
   background-size: cover;
   z-index: -1;
   will-change: transform;
@@ -131,7 +131,7 @@ body::before {
   align-items: center;
   gap: 6px;
   padding: 5px 12px;
-  background: rgba(37, 211, 102, 0.12);
+  background: linear-gradient(rgba(37, 211, 102, 0.14), rgba(37, 211, 102, 0.14)), rgba(10, 18, 14, 0.94);
   border: 1px solid rgba(37, 211, 102, 0.35);
   border-radius: 99px;
   color: #25D366;
@@ -139,7 +139,6 @@ body::before {
   font-weight: 600;
   text-decoration: none;
   transition: all 0.2s ease;
-  backdrop-filter: blur(8px);
 }
 
 .btn-whatsapp:hover {
@@ -196,7 +195,6 @@ body::before {
   padding: 14px 46px 14px 50px;
   border-radius: 24px;
   background: var(--surface-card);
-  backdrop-filter: blur(12px);
   border: 1px solid var(--border-subtle);
   color: #fff;
   font-size: 0.95rem;
@@ -286,7 +284,6 @@ body::before {
 
 .folder {
   background: var(--surface-card);
-  backdrop-filter: blur(14px);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: 16px;
@@ -380,7 +377,6 @@ body::before {
 
 .doc-card {
   background: var(--surface-card);
-  backdrop-filter: blur(12px);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: 14px 16px;
@@ -580,7 +576,6 @@ body::before {
 /* Admin Card */
 .acard {
   background: var(--surface-card);
-  backdrop-filter: blur(14px);
   border: 1px solid var(--border-subtle);
   border-radius: 22px;
   padding: 20px;
@@ -918,3 +913,226 @@ footer {
   }
 }
 
+
+/* ---------- Barra superior: botón de menú ---------- */
+.top-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.menu-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  cursor: pointer;
+  flex: none;
+}
+.menu-btn i { width: 18px; height: 18px; }
+
+/* ---------- Menú lateral ---------- */
+.menu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 5, 8, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+  z-index: 90;
+}
+.menu-overlay.open { opacity: 1; pointer-events: auto; }
+
+.menu-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(300px, 82vw);
+  background: #0c1017;
+  border-right: 1px solid var(--border-subtle);
+  box-shadow: 10px 0 40px rgba(0, 0, 0, 0.5);
+  padding: calc(22px + env(safe-area-inset-top)) 16px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 100;
+}
+.menu-drawer.open { transform: translateX(0); }
+
+.menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.menu-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.menu-close {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  cursor: pointer;
+}
+.menu-close i { width: 16px; height: 16px; }
+
+.menu-items { display: flex; flex-direction: column; gap: 6px; }
+.menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 12px;
+  border-radius: 12px;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-main);
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.menu-item:hover, .menu-item:active {
+  background: var(--surface-hover);
+  border-color: var(--border-subtle);
+}
+.menu-item i { width: 18px; height: 18px; color: var(--text-muted); flex: none; }
+.menu-count {
+  margin-left: auto;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(255, 209, 102, 0.15);
+  color: #ffd166;
+  font-size: 0.74rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+/* ---------- Logo como moneda (3D, dos caras y canto) ---------- */
+.title-row { perspective: 900px; }
+.coin {
+  position: relative;
+  display: inline-block;
+  width: 46px;
+  height: 46px;
+  flex: none;
+  transform-style: preserve-3d;
+  animation: girarMoneda 3.6s linear infinite;
+  will-change: transform;
+}
+.coin-cara, .coin-canto {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+.coin-cara img, .coin-canto img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 50%;
+}
+.coin-cara {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  box-shadow: 0 0 14px rgba(255, 23, 68, 0.35);
+}
+.coin-cara.frente { transform: translateZ(2.5px); }
+.coin-cara.atras { transform: rotateY(180deg) translateZ(2.5px); }
+.coin-cara.atras img { filter: hue-rotate(75deg) saturate(1.25); }
+.coin-canto img { filter: brightness(0.5); }
+.coin-canto.c1 { transform: translateZ(-2px); }
+.coin-canto.c2 { transform: translateZ(-1px); }
+.coin-canto.c3 { transform: translateZ(0px); }
+.coin-canto.c4 { transform: translateZ(1px); }
+.coin-canto.c5 { transform: translateZ(2px); }
+@keyframes girarMoneda {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coin { animation: none; }
+}
+
+/* ---------- Guías y documentos ---------- */
+.docs-note { margin: 0 4px 14px; font-size: 0.82rem; color: var(--text-muted); line-height: 1.45; }
+.docs-empty { text-align: center; color: var(--text-muted); padding: 30px 0; }
+.word-note {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(77, 163, 255, 0.3);
+  background: rgba(77, 163, 255, 0.08);
+  color: var(--text-main);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.admin-sec-title {
+  margin: 22px 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ---------- Acceso privado: teclado de PIN ---------- */
+.pinbox { max-width: 340px; }
+.pin-dots { display: flex; justify-content: center; gap: 14px; margin: 4px 0 18px; }
+.pin-dots span {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border-subtle);
+  background: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.pin-dots span.on {
+  background: #ff1744;
+  border-color: #ff1744;
+  box-shadow: 0 0 12px rgba(255, 23, 68, 0.5);
+}
+.pin-dots.fallo { animation: sacudirPin 0.36s ease; }
+@keyframes sacudirPin {
+  20%, 60% { transform: translateX(-7px); }
+  40%, 80% { transform: translateX(7px); }
+}
+.pin-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 72px);
+  gap: 12px;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+.pin-key {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  font-size: 1.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.15s ease;
+}
+.pin-key:active { transform: scale(0.92); background: rgba(255, 23, 68, 0.2); }
+.pin-key i { width: 22px; height: 22px; }
+.pin-empty { visibility: hidden; }
+.ls.error { color: #ff6b6b; }

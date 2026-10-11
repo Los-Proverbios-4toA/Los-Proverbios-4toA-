@@ -60,10 +60,10 @@ async function sbEliminarClaseFila(id) {
   if (!res.ok) throw new Error('No se pudo eliminar de la base de datos');
 }
 
-async function sbSubirArchivo(path, blob) {
+async function sbSubirArchivo(path, blob, tipo) {
   const res = await fetch(`${SUPA_URL}/storage/v1/object/${SB_BUCKET}/${path}`, {
     method: 'POST',
-    headers: { ...SB_HEADERS, 'Content-Type': blob.type || 'application/pdf' },
+    headers: { ...SB_HEADERS, 'Content-Type': tipo || blob.type || 'application/pdf' },
     body: blob
   });
   if (!res.ok) {
@@ -159,6 +159,7 @@ const M = [
 const FOLDER = c => `<svg viewBox="0 0 48 40" xmlns="http://www.w3.org/2000/svg"><path d="M4 8c0-2.2 1.8-4 4-4h10l4 4h18c2.2 0 4 1.8 4 4v4H4V8z" fill="${c}" opacity=".55"/><path d="M4 12h40v20c0 2.2-1.8 4-4 4H8c-2.2 0-4-1.8-4-4V12z" fill="${c}"/><circle cx="24" cy="23" r="2.6" fill="rgba(255,255,255,.9)"/><path d="M19.3 30c.6-2.7 2.5-4.1 4.7-4.1s4.1 1.4 4.7 4.1" stroke="rgba(255,255,255,.9)" stroke-width="1.7" fill="none" stroke-linecap="round"/></svg>`;
 
 let DOCS = [], loaded = false, tt, dropFile = null, currentBlobUrl = null;
+let DOCUMENTOS = [], dropEsWord = false;
 const $ = id => document.getElementById(id);
 const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const soloDigitos = s => (s || '').replace(/\D/g, '');
@@ -325,6 +326,7 @@ async function cargar() {
   loaded = true;
   renderGrid();
   actualizarTareasChip();
+  cargarDocumentos();
 }
 
 // Renderizar tarjetas de materias
@@ -349,13 +351,13 @@ function renderGrid() {
    ============================================================ */
 function actualizarTareasChip() {
   const conTarea = DOCS.filter(d => d.tarea && d.tarea.trim());
-  const chip = $('tareasChip');
-  if (!conTarea.length) { chip.classList.add('hidden'); return; }
-  chip.classList.remove('hidden');
-  $('tareasChipTxt').textContent = `${conTarea.length} tarea${conTarea.length === 1 ? '' : 's'} pendiente${conTarea.length === 1 ? '' : 's'}`;
+  const contador = $('menuTareasCount');
+  if (!conTarea.length) { contador.classList.add('hidden'); return; }
+  contador.classList.remove('hidden');
+  contador.textContent = conTarea.length;
 }
 
-$('tareasChip').onclick = () => {
+function abrirTareas() {
   conTransicion(() => {
     $('home').classList.add('hidden');
     $('subj').classList.add('hidden');
@@ -380,7 +382,26 @@ $('tareasChip').onclick = () => {
 
     if (window.lucide) lucide.createIcons();
   });
-};
+}
+
+/* ============================================================
+   MENÚ LATERAL
+   ============================================================ */
+function abrirMenu() {
+  $('menuLateral').classList.add('open');
+  $('menuOverlay').classList.add('open');
+  $('menuLateral').setAttribute('aria-hidden', 'false');
+}
+function cerrarMenu() {
+  $('menuLateral').classList.remove('open');
+  $('menuOverlay').classList.remove('open');
+  $('menuLateral').setAttribute('aria-hidden', 'true');
+}
+$('menuBtn').onclick = abrirMenu;
+$('menuClose').onclick = cerrarMenu;
+$('menuOverlay').onclick = cerrarMenu;
+$('menuTareas').onclick = () => { cerrarMenu(); abrirTareas(); };
+addEventListener('keydown', e => { if (e.key === 'Escape') cerrarMenu(); });
 
 $('backTareas').onclick = () => conTransicion(() => { $('tareas').classList.add('hidden'); $('home').classList.remove('hidden'); });
 
@@ -505,31 +526,109 @@ $('cerrar-modal').onclick = () => {
 
 // Panel de Administración
 $('aMat').innerHTML = M.map((m, i) => `<option value="${i}">${m.n}</option>`).join('');
-let taps = 0;
-$('foot').onclick = () => {
-  taps++;
-  if (taps >= 5) {
-    taps = 0;
-    $('pass').value = '';
-    $('lock').classList.add('on');
-    if (window.lucide) lucide.createIcons();
-  }
-};
 
-$('cancelLock').onclick = () => { $('lock').classList.remove('on'); };
-$('eye').onclick = () => { const p = $('pass'); p.type = p.type === 'password' ? 'text' : 'password'; };
-$('unlock').onclick = tryUnlock;
-$('pass').onkeydown = e => { if (e.key === 'Enter') tryUnlock(); };
+/* ---------- Acceso al panel: teclado de PIN dibujado en pantalla ---------- */
+const PIN_HASH = '934124f34dbfe053431d2f10a60a3e0b8c99824d80c110b4bdd7620ebf011d79';
+const PIN_LARGO = 4;
+const PIN_MAX_FALLOS = 5;
+const PIN_BLOQUEO_MS = 30000;
+let pinIngresado = '';
+let pinOcupado = false;
+let toquesFoot = 0, toquesTimer = null;
 
-function tryUnlock() {
-  if ($('pass').value === 'juan4a') {
-    $('lock').classList.remove('on');
+async function pinSha256(texto) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function pinBloqueadoHasta() { return Number(localStorage.getItem('4toa_pin_bloqueo')) || 0; }
+function pinFallos() { return Number(localStorage.getItem('4toa_pin_fallos')) || 0; }
+
+function pintarPuntos() {
+  [...$('pinDots').children].forEach((p, i) => p.classList.toggle('on', i < pinIngresado.length));
+}
+function mensajePin(texto, esError) {
+  const m = $('pinMsg');
+  m.textContent = texto;
+  m.classList.toggle('error', !!esError);
+}
+function sacudirPuntos() {
+  const d = $('pinDots');
+  d.classList.remove('fallo');
+  void d.offsetWidth;
+  d.classList.add('fallo');
+  setTimeout(() => d.classList.remove('fallo'), 400);
+}
+
+function abrirPin() {
+  pinIngresado = '';
+  pintarPuntos();
+  const faltan = pinBloqueadoHasta() - Date.now();
+  if (faltan > 0) mensajePin(`Demasiados intentos. Espera ${Math.ceil(faltan / 1000)} s`, true);
+  else mensajePin('Ingresa tu PIN de 4 dígitos');
+  $('lock').classList.add('on');
+}
+function cerrarPin() {
+  pinIngresado = '';
+  $('lock').classList.remove('on');
+}
+
+function presionarTecla(k) {
+  if (pinOcupado) return;
+  if (pinBloqueadoHasta() > Date.now()) { abrirPin(); return; }
+  if (k === 'del') { pinIngresado = pinIngresado.slice(0, -1); pintarPuntos(); return; }
+  if (pinIngresado.length >= PIN_LARGO) return;
+  pinIngresado += k;
+  pintarPuntos();
+  if (pinIngresado.length === PIN_LARGO) verificarPin();
+}
+
+async function verificarPin() {
+  pinOcupado = true;
+  const huella = await pinSha256(pinIngresado);
+  pinOcupado = false;
+
+  if (huella === PIN_HASH) {
+    localStorage.removeItem('4toa_pin_fallos');
+    localStorage.removeItem('4toa_pin_bloqueo');
+    cerrarPin();
     conTransicion(() => { $('admin').classList.remove('hidden'); renderAdmin(); });
     window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-  } else {
-    toast('Contraseña incorrecta');
+    return;
   }
+
+  const fallos = pinFallos() + 1;
+  if (fallos >= PIN_MAX_FALLOS) {
+    localStorage.setItem('4toa_pin_bloqueo', String(Date.now() + PIN_BLOQUEO_MS));
+    localStorage.removeItem('4toa_pin_fallos');
+    mensajePin('Demasiados intentos. Espera 30 s', true);
+  } else {
+    localStorage.setItem('4toa_pin_fallos', String(fallos));
+    const quedan = PIN_MAX_FALLOS - fallos;
+    mensajePin(`PIN incorrecto. Te ${quedan === 1 ? 'queda 1 intento' : `quedan ${quedan} intentos`}`, true);
+  }
+  sacudirPuntos();
+  setTimeout(() => { pinIngresado = ''; pintarPuntos(); }, 350);
 }
+
+$('pinPad').onclick = e => {
+  const b = e.target.closest('[data-k]');
+  if (b) presionarTecla(b.dataset.k);
+};
+$('cancelLock').onclick = cerrarPin;
+addEventListener('keydown', e => {
+  if (!$('lock').classList.contains('on')) return;
+  if (/^[0-9]$/.test(e.key)) presionarTecla(e.key);
+  else if (e.key === 'Backspace') presionarTecla('del');
+  else if (e.key === 'Escape') cerrarPin();
+});
+
+// Se abre tocando 5 veces el pie de página (rápido, para no abrirlo por accidente)
+$('foot').onclick = () => {
+  toquesFoot++;
+  clearTimeout(toquesTimer);
+  toquesTimer = setTimeout(() => { toquesFoot = 0; }, 3000);
+  if (toquesFoot >= 5) { toquesFoot = 0; abrirPin(); }
+};
 
 $('cerrarAdmin').onclick = () => conTransicion(() => { $('admin').classList.add('hidden'); });
 
@@ -542,10 +641,15 @@ $('aFile').onchange = e => setFile(e.target.files[0]);
 
 function setFile(f) {
   if (!f) return;
-  if (f.type !== 'application/pdf') { toast('El archivo debe ser un PDF'); return; }
+  const word = esWord(f);
+  const pdf = f.type === 'application/pdf' || (f.name || '').toLowerCase().endsWith('.pdf');
+  if (!word && !pdf) { toast('Solo se permiten PDF o Word (.doc, .docx)'); return; }
   dropFile = f;
+  dropEsWord = word;
+  $('grpMat').classList.toggle('hidden', word);
+  $('wordNote').classList.toggle('hidden', !word);
   $('fname').classList.remove('hidden');
-  $('fname').innerHTML = `<span>PDF</span> ${f.name} <span style="color:var(--text-muted); margin-left:auto">${(f.size/1024).toFixed(0)} KB</span>`;
+  $('fname').innerHTML = `<span>${word ? 'WORD' : 'PDF'}</span> ${escHTML(f.name)} <span style="color:var(--text-muted); margin-left:auto">${(f.size / 1024).toFixed(0)} KB</span>`;
 }
 
 function nombreArchivoAleatorio() {
@@ -584,17 +688,24 @@ async function publicarBlobComoClase(mi, nombre, blob, botonEl, textoOriginalBtn
 
 // Publicar clase (modo: subir PDF manual)
 $('pubBtn').onclick = async () => {
-  const mi = +$('aMat').value, t = $('aTit').value.trim(), f = dropFile || $('aFile').files[0];
+  const t = $('aTit').value.trim();
+  const f = dropFile || $('aFile').files[0];
   if (!t) { toast('Escribe un título'); return; }
-  if (!f) { toast('Selecciona un PDF'); return; }
-  if (f.type !== 'application/pdf') { toast('El archivo debe ser un PDF'); return; }
-
-  const ok = await publicarBlobComoClase(mi, t, f, $('pubBtn'), '☁️ Publicar clase');
+  if (!f) { toast('Selecciona un archivo'); return; }
+  let ok;
+  if (dropEsWord || esWord(f)) {
+    ok = await publicarDocumento(f, t, $('pubBtn'));
+  } else {
+    ok = await publicarBlobComoClase(+$('aMat').value, t, f, $('pubBtn'), '☁️ Publicar clase');
+  }
   if (ok) {
     $('aTit').value = '';
     $('aFile').value = '';
     dropFile = null;
+    dropEsWord = false;
     $('fname').classList.add('hidden');
+    $('grpMat').classList.remove('hidden');
+    $('wordNote').classList.add('hidden');
   }
 };
 
@@ -814,7 +925,7 @@ async function generarPdfConPlantillas({ clase, materia, fecha, titulo, cuerpo }
 }
 
 function renderAdmin() {
-  $('aList').innerHTML = DOCS.length ? DOCS.map((d, i) => `
+  const clases = DOCS.length ? DOCS.map((d, i) => `
     <div class="doc-card card-in" style="animation-delay:${Math.min(i * 25, 150)}ms">
       <div class="doc-info">
         <span class="doc-title">${d.name}</span>
@@ -826,6 +937,21 @@ function renderAdmin() {
     </div>
   `).join('') : '<div style="color:var(--text-muted); padding:10px;">Aún no has publicado clases.</div>';
 
+  const docs = DOCUMENTOS.length ? `
+    <div class="admin-sec-title">Guías y documentos</div>
+    ${DOCUMENTOS.map((d, i) => `
+      <div class="doc-card card-in" style="animation-delay:${Math.min(i * 25, 150)}ms">
+        <div class="doc-info">
+          <span class="doc-title">${escHTML(d.name)}</span>
+          <span class="doc-meta">Word (.${d.ext}) · ${fdate(d.ts)}</span>
+        </div>
+        <button class="btn-download-pdf" onclick="eliminarDocumento('${d.id}')" style="color:#ff6b6b; border-color:rgba(255,107,107,0.3);">
+          <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
+        </button>
+      </div>
+    `).join('')}` : '';
+
+  $('aList').innerHTML = clases + docs;
   if (window.lucide) lucide.createIcons();
 }
 
@@ -928,52 +1054,10 @@ if (btnMigrar) {
   };
 }
 
-// EFECTO DE LLUVIA
-const cv = $('fx'), cx = cv.getContext('2d');
-let W, H, D = [];
-
-function rs() {
-  W = cv.width = innerWidth;
-  H = cv.height = innerHeight;
-}
-addEventListener('resize', rs);
-rs();
-
-for (let i = 0; i < 45; i++) {
-  D.push({
-    x: Math.random() * W,
-    y: Math.random() * H,
-    len: 18 + Math.random() * 25,
-    sp: 3.5 + Math.random() * 4.5,
-    w: 1 + Math.random() * 1.2,
-    o: 0.2 + Math.random() * 0.4
-  });
-}
-
-function loopRain() {
-  cx.clearRect(0, 0, W, H);
-  for (const d of D) {
-    cx.strokeStyle = `rgba(200, 225, 255, ${d.o})`;
-    cx.lineWidth = d.w;
-    cx.beginPath();
-    cx.moveTo(d.x, d.y);
-    cx.lineTo(d.x, d.y + d.len);
-    cx.stroke();
-
-    d.y += d.sp;
-    if (d.y > H + d.len) {
-      d.y = -d.len;
-      d.x = Math.random() * W;
-    }
-  }
-  requestAnimationFrame(loopRain);
-}
-
 // Inicialización de la App
 cargar().then(() => {
   if (window.lucide) lucide.createIcons();
 });
-loopRain();
 
 // Registrar Service Worker para PWA / Caché Offline
 if ('serviceWorker' in navigator) {
@@ -983,3 +1067,169 @@ if ('serviceWorker' in navigator) {
       .catch(err => console.error('Error en Service Worker', err));
   });
 }
+
+
+/* ============================================================
+   GUÍAS Y DOCUMENTOS (archivos Word, sin materia)
+   ============================================================ */
+function escHTML(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function esWord(f) {
+  const n = (f && f.name ? f.name : '').toLowerCase();
+  return n.endsWith('.doc') || n.endsWith('.docx');
+}
+function extDe(f) {
+  return (f.name || '').toLowerCase().endsWith('.docx') ? 'docx' : 'doc';
+}
+function mimeWord(ext) {
+  return ext === 'docx'
+    ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    : 'application/msword';
+}
+
+async function sbListarDocumentos() {
+  const res = await fetch(`${SUPA_URL}/rest/v1/documentos?select=id,name,ts,archivo_path,ext&order=ts.desc`, { headers: SB_HEADERS });
+  if (!res.ok) throw new Error('documentos');
+  return res.json();
+}
+async function sbInsertarDocumento(fila) {
+  const res = await fetch(`${SUPA_URL}/rest/v1/documentos`, {
+    method: 'POST',
+    headers: { ...SB_HEADERS, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(fila)
+  });
+  if (!res.ok) throw new Error('No se pudo guardar el documento');
+}
+async function sbEliminarDocumentoFila(id) {
+  const res = await fetch(`${SUPA_URL}/rest/v1/documentos?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: SB_HEADERS });
+  if (!res.ok) throw new Error('No se pudo eliminar');
+}
+
+async function cargarDocumentos() {
+  try {
+    DOCUMENTOS = await sbListarDocumentos();
+    localStorage.setItem('4toa_docs_word', JSON.stringify(DOCUMENTOS));
+  } catch (e) {
+    const respaldo = localStorage.getItem('4toa_docs_word');
+    if (respaldo) DOCUMENTOS = JSON.parse(respaldo);
+  }
+  actualizarMenuDocs();
+}
+
+function actualizarMenuDocs() {
+  const c = $('menuDocsCount');
+  if (!DOCUMENTOS.length) { c.classList.add('hidden'); return; }
+  c.classList.remove('hidden');
+  c.textContent = DOCUMENTOS.length;
+}
+
+async function publicarDocumento(f, nombre, botonEl) {
+  if (f.size > 25 * 1024 * 1024) { toast('Máx 25 MB por documento.'); return false; }
+  const ext = extDe(f);
+  botonEl.disabled = true;
+  botonEl.querySelector('span').textContent = 'Subiendo a la nube...';
+  try {
+    const path = `docs/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    await sbSubirArchivo(path, f, mimeWord(ext));
+    await sbInsertarDocumento({ name: nombre, ts: Date.now(), archivo_path: path, ext, size: f.size });
+    await cargarDocumentos();
+    renderAdmin();
+    toast('Documento publicado en Guías y documentos');
+    return true;
+  } catch (e) {
+    toast('Error al subir: ' + (e.message || ''));
+    return false;
+  } finally {
+    botonEl.disabled = false;
+    botonEl.querySelector('span').textContent = '☁️ Publicar clase';
+  }
+}
+
+function abrirDocs() {
+  conTransicion(() => {
+    ['home', 'subj', 'res', 'admin', 'tareas'].forEach(id => $(id).classList.add('hidden'));
+    $('docsV').classList.remove('hidden');
+    renderDocs();
+  });
+}
+
+function renderDocs() {
+  $('docsList').innerHTML = DOCUMENTOS.length ? DOCUMENTOS.map((d, i) => `
+    <div class="doc-card card-in" style="animation-delay:${Math.min(i * 25, 150)}ms">
+      <div class="doc-info">
+        <span class="doc-title" title="${escHTML(d.name)}">${escHTML(d.name)}</span>
+        <span class="doc-meta">Word (.${d.ext}) · ${fdate(d.ts)}</span>
+      </div>
+      <div class="doc-actions">
+        <button class="btn-share" onclick="compartirDocumento(${i})" title="Compartir">
+          <i data-lucide="share" style="width:15px; height:15px;"></i>
+        </button>
+        <button class="btn-download-pdf" onclick="descargarDocumento(${i})" title="Descargar">
+          <i data-lucide="download" style="width:14px; height:14px;"></i>
+          <span>Descargar</span>
+        </button>
+        <button class="btn-view-pdf" onclick="abrirDocumento(${i})">
+          <span>Abrir</span>
+          <i data-lucide="external-link" style="width:14px; height:14px;"></i>
+        </button>
+      </div>
+    </div>
+  `).join('') : '<div class="docs-empty">Todavía no hay guías ni documentos.</div>';
+  if (window.lucide) lucide.createIcons();
+}
+
+window.abrirDocumento = function(i) {
+  const d = DOCUMENTOS[i];
+  if (d) window.open(sbUrlPublica(d.archivo_path), '_blank');
+};
+
+window.descargarDocumento = async function(i) {
+  const d = DOCUMENTOS[i];
+  if (!d) return;
+  try {
+    toast('Preparando descarga...');
+    const res = await fetch(sbUrlPublica(d.archivo_path));
+    if (!res.ok) throw new Error('descarga');
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${d.name}.${d.ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch (e) {
+    toast('No se pudo descargar');
+  }
+};
+
+window.compartirDocumento = async function(i) {
+  const d = DOCUMENTOS[i];
+  if (!d) return;
+  const texto = `📄 ${d.name} ${sbUrlPublica(d.archivo_path)}`;
+  if (navigator.share) {
+    try { await navigator.share({ text: texto }); } catch (_) {}
+    return;
+  }
+  window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
+};
+
+window.eliminarDocumento = async function(id) {
+  const d = DOCUMENTOS.find(x => String(x.id) === String(id));
+  try {
+    await sbEliminarDocumentoFila(id);
+    if (d && d.archivo_path) await sbEliminarArchivo(d.archivo_path);
+    await cargarDocumentos();
+    renderAdmin();
+    toast('Documento eliminado');
+  } catch (e) {
+    toast('Error al eliminar');
+  }
+};
+
+$('menuDocs').onclick = () => { cerrarMenu(); abrirDocs(); };
+$('backDocs').onclick = () => conTransicion(() => {
+  $('docsV').classList.add('hidden');
+  $('home').classList.remove('hidden');
+});
